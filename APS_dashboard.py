@@ -276,7 +276,8 @@ col_cfg = build_column_config_for_autowidth(table_df)
 st.data_editor(
     table_df,
     use_container_width=True,
-    hide_index=True,
+    # hide_index=True,
+    hide_index=False,
     disabled=True,          # read-only
     column_config=col_cfg
 )
