@@ -23,15 +23,14 @@ def load_data():
     # Read all columns from the main table (+ rowid for uniqueness)
     df = pd.read_sql(f'SELECT rowid as _rowid_, * FROM "{MAIN_TABLE}"', engine)
 
-    # Normalize timestamp column:
-    # Keep a real datetime column for filtering (_ts_dt) + a nice string for display (Time Stamp)
+    # Normalize timestamp column (string format, so we can list unique timestamps in a multiselect)
     if "Time Stamp" in df.columns:
-        dt = pd.to_datetime(df["Time Stamp"], errors="coerce", dayfirst=True)
-        df["_ts_dt"] = dt
-        if dt.notna().any():
-            df["Time Stamp"] = dt.dt.strftime("%Y-%m-%d %H:%M:%S")
-    else:
-        df["_ts_dt"] = pd.NaT
+        # Example input: "16:48:51 10-08-2025" (time then date)
+        parsed = pd.to_datetime(df["Time Stamp"], errors="coerce", dayfirst=True)
+        # Keep as consistent string for filtering
+        df["Time Stamp"] = parsed.dt.strftime("%Y-%m-%d %H:%M:%S")
+        # If parsing failed for some rows, keep original (avoid "NaT" strings)
+        df.loc[parsed.isna(), "Time Stamp"] = df.loc[parsed.isna(), "Time Stamp"].astype(str)
 
     # Convert measurements to numeric
     for c in ["W2P Measurement", "P2W Measurement"]:
@@ -57,8 +56,6 @@ def load_data():
         "Number",
         "W2P Measurement",
         "P2W Measurement",
-        # keep internal filter column near end (not displayed)
-        "_ts_dt",
     ]
     df = df[[c for c in desired_order if c in df.columns] + [c for c in df.columns if c not in desired_order]]
     return df
@@ -196,32 +193,21 @@ with st.sidebar:
         if selected_transceiver_fw:
             filtered_options_df = filtered_options_df[filtered_options_df["Transceiver FW"].isin(selected_transceiver_fw)]
 
+    # ✅ Date & Time (Time Stamp) multiselect filter (like the others)
+    selected_timestamp = []
+    if "Time Stamp" in filtered_options_df.columns:
+        # show newest first (more convenient)
+        ts_options = sorted(filtered_options_df["Time Stamp"].dropna().unique(), reverse=True)
+        selected_timestamp = st.multiselect("Date & Time", ts_options)
+        if selected_timestamp:
+            filtered_options_df = filtered_options_df[filtered_options_df["Time Stamp"].isin(selected_timestamp)]
+
     # --- Filter by sample number ---
     st.header("🆔 Filter by Sample Number")
     number_input = st.text_input("Enter sample numbers (comma-separated)", value="")
     number_list = []
     if number_input.strip():
         number_list = [int(x.strip()) for x in number_input.split(",") if x.strip().isdigit()]
-
-    # --- Timestamp filter ---
-    st.header("📅 Date & Time Filter")
-    use_ts_filter = st.checkbox("Enable Date & Time filter", value=False)
-
-    ts_start = ts_end = None
-    if use_ts_filter and "_ts_dt" in filtered_options_df.columns:
-        valid_ts = filtered_options_df["_ts_dt"].dropna()
-        if not valid_ts.empty:
-            min_dt = valid_ts.min().to_pydatetime()
-            max_dt = valid_ts.max().to_pydatetime()
-
-            ts_start, ts_end = st.date_input(
-                "Select date range",
-                value=(min_dt.date(), max_dt.date()),
-                min_value=min_dt.date(),
-                max_value=max_dt.date(),
-            )
-        else:
-            st.info("No valid timestamps found to filter.")
 
     # --- Measurement filters ---
     st.header("⏱️ W2P Filter")
@@ -237,10 +223,6 @@ with st.sidebar:
     st.caption("Toggle columns on/off to display in the table:")
 
     display_df_preview = df.rename(columns=display_columns_map)
-    # Do not allow user to show internal datetime col
-    if "_ts_dt" in display_df_preview.columns:
-        display_df_preview = display_df_preview.drop(columns=["_ts_dt"], errors="ignore")
-
     checkbox_columns = {}
     for col in display_df_preview.columns:
         checkbox_columns[col] = st.checkbox(col, value=True)
@@ -268,18 +250,12 @@ if selected_transceiver_pn and "Transceiver PN" in filtered_df.columns:
 if selected_transceiver_fw and "Transceiver FW" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Transceiver FW"].isin(selected_transceiver_fw)]
 
+# ✅ apply timestamp filter
+if selected_timestamp and "Time Stamp" in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df["Time Stamp"].isin(selected_timestamp)]
+
 if number_list and "Number" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Number"].isin(number_list)]
-
-# Apply timestamp filter (by date range)
-if use_ts_filter and ts_start and ts_end and "_ts_dt" in filtered_df.columns:
-    start_dt = pd.to_datetime(ts_start)
-    end_dt = pd.to_datetime(ts_end) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)  # include full end day
-    filtered_df = filtered_df[
-        filtered_df["_ts_dt"].notna() &
-        (filtered_df["_ts_dt"] >= start_dt) &
-        (filtered_df["_ts_dt"] <= end_dt)
-    ]
 
 # W2P filter
 if "W2P Measurement" in filtered_df.columns:
@@ -298,9 +274,6 @@ if "P2W Measurement" in filtered_df.columns:
 # Rename columns for display
 display_df = filtered_df.rename(columns=display_columns_map)
 
-# Never display the internal datetime column (even if it exists)
-display_df = display_df.drop(columns=["_ts_dt"], errors="ignore")
-
 # Ensure selected columns exist
 selected_columns = [c for c in selected_columns if c in display_df.columns]
 
@@ -316,7 +289,7 @@ st.data_editor(
     table_df,
     use_container_width=True,
     hide_index=False,
-    disabled=True,
+    disabled=True,          # read-only
     column_config=col_cfg
 )
 
