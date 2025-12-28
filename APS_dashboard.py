@@ -10,13 +10,13 @@ from PIL import Image
 # =========================================
 # CONFIG
 # =========================================
-# DB_FILENAME = "APS_data_base2.db"               
+DB_FILENAME = "APS_data_base2.db"               
 MAIN_TABLE = 'Disruption Time Measurement'     
 LOGO_FILENAME = "Packetlight Logo.png"         
 
 # --- DB Connection ---
-# DB_PATH = os.path.join(os.path.dirname(__file__), DB_FILENAME)
-DB_PATH = r"G:\Python\PacketLight Automation\Test_Cases\General Tests\APS Tests\APS_data_base2.db"
+DB_PATH = os.path.join(os.path.dirname(__file__), DB_FILENAME)
+# DB_PATH = r"G:\Python\PacketLight Automation\Test_Cases\General Tests\APS Tests\APS_data_base2.db"
 engine = create_engine(f"sqlite:///{DB_PATH}")
 
 @st.cache_data
