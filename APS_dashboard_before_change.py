@@ -10,12 +10,13 @@ from PIL import Image
 # =========================================
 # CONFIG
 # =========================================
-DB_FILENAME = "APS_data_base2.db"
-MAIN_TABLE = 'Disruption Time Measurement'
-LOGO_FILENAME = "Packetlight Logo.png"
+DB_FILENAME = "APS_data_base2.db"               
+MAIN_TABLE = 'Disruption Time Measurement'     
+LOGO_FILENAME = "Packetlight Logo.png"         
 
 # --- DB Connection ---
 DB_PATH = os.path.join(os.path.dirname(__file__), DB_FILENAME)
+# DB_PATH = r"G:\Python\PacketLight Automation\Test_Cases\General Tests\APS Tests\APS_data_base2.db"
 engine = create_engine(f"sqlite:///{DB_PATH}")
 
 @st.cache_data
@@ -23,15 +24,12 @@ def load_data():
     # Read all columns from the main table (+ rowid for uniqueness)
     df = pd.read_sql(f'SELECT rowid as _rowid_, * FROM "{MAIN_TABLE}"', engine)
 
-    # Normalize timestamp column:
-    # Keep a real datetime column for filtering (_ts_dt) + a nice string for display (Time Stamp)
+    # Normalize timestamp column (your screenshot shows "Time Stamp")
     if "Time Stamp" in df.columns:
-        dt = pd.to_datetime(df["Time Stamp"], errors="coerce", dayfirst=True)
-        df["_ts_dt"] = dt
-        if dt.notna().any():
-            df["Time Stamp"] = dt.dt.strftime("%Y-%m-%d %H:%M:%S")
-    else:
-        df["_ts_dt"] = pd.NaT
+        # Example: "16:48:51 10-08-2025" (time then date)
+        parsed = pd.to_datetime(df["Time Stamp"], errors="coerce", dayfirst=True)
+        if parsed.notna().any():
+            df["Time Stamp"] = parsed.dt.strftime("%Y-%m-%d %H:%M:%S")
 
     # Convert measurements to numeric
     for c in ["W2P Measurement", "P2W Measurement"]:
@@ -57,8 +55,6 @@ def load_data():
         "Number",
         "W2P Measurement",
         "P2W Measurement",
-        # keep internal filter column near end (not displayed)
-        "_ts_dt",
     ]
     df = df[[c for c in desired_order if c in df.columns] + [c for c in df.columns if c not in desired_order]]
     return df
@@ -69,9 +65,10 @@ def build_column_config_for_autowidth(df: pd.DataFrame, min_px=90, max_px=380, p
     """
     cfg = {}
     for col in df.columns:
+        # compute max length among header + values
         s = df[col].astype(str).fillna("")
         max_len = max([len(str(col))] + s.map(len).tolist())
-        width_px = int(max_len * px_per_char + 24)  # padding
+        width_px = int(max_len * px_per_char + 24)  # +padding
         width_px = max(min_px, min(max_px, width_px))
         cfg[col] = st.column_config.Column(width=width_px)
     return cfg
@@ -203,26 +200,6 @@ with st.sidebar:
     if number_input.strip():
         number_list = [int(x.strip()) for x in number_input.split(",") if x.strip().isdigit()]
 
-    # --- Timestamp filter ---
-    st.header("📅 Date & Time Filter")
-    use_ts_filter = st.checkbox("Enable Date & Time filter", value=False)
-
-    ts_start = ts_end = None
-    if use_ts_filter and "_ts_dt" in filtered_options_df.columns:
-        valid_ts = filtered_options_df["_ts_dt"].dropna()
-        if not valid_ts.empty:
-            min_dt = valid_ts.min().to_pydatetime()
-            max_dt = valid_ts.max().to_pydatetime()
-
-            ts_start, ts_end = st.date_input(
-                "Select date range",
-                value=(min_dt.date(), max_dt.date()),
-                min_value=min_dt.date(),
-                max_value=max_dt.date(),
-            )
-        else:
-            st.info("No valid timestamps found to filter.")
-
     # --- Measurement filters ---
     st.header("⏱️ W2P Filter")
     w2p_filter_type = st.radio("Filter W2P:", ["Show All", "Above", "Below"], horizontal=True, key="w2p_radio")
@@ -237,10 +214,6 @@ with st.sidebar:
     st.caption("Toggle columns on/off to display in the table:")
 
     display_df_preview = df.rename(columns=display_columns_map)
-    # Do not allow user to show internal datetime col
-    if "_ts_dt" in display_df_preview.columns:
-        display_df_preview = display_df_preview.drop(columns=["_ts_dt"], errors="ignore")
-
     checkbox_columns = {}
     for col in display_df_preview.columns:
         checkbox_columns[col] = st.checkbox(col, value=True)
@@ -271,16 +244,6 @@ if selected_transceiver_fw and "Transceiver FW" in filtered_df.columns:
 if number_list and "Number" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Number"].isin(number_list)]
 
-# Apply timestamp filter (by date range)
-if use_ts_filter and ts_start and ts_end and "_ts_dt" in filtered_df.columns:
-    start_dt = pd.to_datetime(ts_start)
-    end_dt = pd.to_datetime(ts_end) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)  # include full end day
-    filtered_df = filtered_df[
-        filtered_df["_ts_dt"].notna() &
-        (filtered_df["_ts_dt"] >= start_dt) &
-        (filtered_df["_ts_dt"] <= end_dt)
-    ]
-
 # W2P filter
 if "W2P Measurement" in filtered_df.columns:
     if w2p_filter_type == "Above":
@@ -298,30 +261,29 @@ if "P2W Measurement" in filtered_df.columns:
 # Rename columns for display
 display_df = filtered_df.rename(columns=display_columns_map)
 
-# Never display the internal datetime column (even if it exists)
-display_df = display_df.drop(columns=["_ts_dt"], errors="ignore")
-
-# Ensure selected columns exist
+# Ensure selected columns exist (in case user toggled something odd)
 selected_columns = [c for c in selected_columns if c in display_df.columns]
 
 # =========================================
 # DISPLAY RESULTS
 # =========================================
 st.subheader(f"Showing {len(display_df)} Records")
-
+# st.dataframe(display_df[selected_columns], use_container_width=True)
 table_df = display_df[selected_columns].copy()
+
 col_cfg = build_column_config_for_autowidth(table_df)
 
 st.data_editor(
     table_df,
     use_container_width=True,
     hide_index=False,
-    disabled=True,
+    disabled=True,          # read-only
     column_config=col_cfg
 )
 
+
 # =========================================
-# DOWNLOAD EXCEL
+# DOWNLOAD EXCEL 
 # =========================================
 export_df = display_df[selected_columns]
 output = io.BytesIO()
