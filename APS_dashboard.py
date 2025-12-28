@@ -59,7 +59,7 @@ def load_data():
     df = df[[c for c in desired_order if c in df.columns] + [c for c in df.columns if c not in desired_order]]
     return df
 
-def build_column_config_for_autowidth(df: pd.DataFrame, min_px=90, max_px=420, px_per_char=8):
+def build_column_config_for_autowidth(df: pd.DataFrame, min_px=90, max_px=380, px_per_char=8):
     """
     Estimate a good column width (in px) based on the longest string in each column.
     """
