@@ -83,13 +83,13 @@ if os.path.exists(logo_path):
     st.image(Image.open(logo_path), width=250)
 
 st.title("PacketLight - APS Disruption Time Results")
-st.subheader("(W2P / P2W disruption time measurements)")
+st.subheader("(W2P / P2W Disruption Time Measurements)")
 
 # =========================================
 # DISPLAY COLUMN NAMES
 # =========================================
 display_columns_map = {
-    "_rowid_": "Row ID",
+    "_rowid_": "ID",
     "Product Name": "Product Name",
     "Protection Type": "Protection Type",
     "SoftWare Version": "Software Version",
@@ -99,7 +99,7 @@ display_columns_map = {
     "Transceiver PN": "Transceiver PN",
     "Transceiver FW": "Transceiver FW",
     "Time Stamp": "Date & Time",
-    "Number": "Sample #",
+    "Number": "Sample Number",
     "W2P Measurement": "W2P (ms)",
     "P2W Measurement": "P2W (ms)",
 }
@@ -194,7 +194,7 @@ with st.sidebar:
             filtered_options_df = filtered_options_df[filtered_options_df["Transceiver FW"].isin(selected_transceiver_fw)]
 
     # --- Filter by sample number ---
-    st.header("🆔 Filter by Sample # (Number)")
+    st.header("🆔 Filter by Sample Number")
     number_input = st.text_input("Enter sample numbers (comma-separated)", value="")
     number_list = []
     if number_input.strip():
