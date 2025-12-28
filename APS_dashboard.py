@@ -59,7 +59,7 @@ def load_data():
     df = df[[c for c in desired_order if c in df.columns] + [c for c in df.columns if c not in desired_order]]
     return df
 
-def build_column_config_for_autowidth(df: pd.DataFrame, min_px=90, max_px=520, px_per_char=8):
+def build_column_config_for_autowidth(df: pd.DataFrame, min_px=90, max_px=420, px_per_char=8):
     """
     Estimate a good column width (in px) based on the longest string in each column.
     """
@@ -276,7 +276,6 @@ col_cfg = build_column_config_for_autowidth(table_df)
 st.data_editor(
     table_df,
     use_container_width=True,
-    # hide_index=True,
     hide_index=False,
     disabled=True,          # read-only
     column_config=col_cfg
@@ -284,7 +283,7 @@ st.data_editor(
 
 
 # =========================================
-# DOWNLOAD EXCEL (formatted, with logo)
+# DOWNLOAD EXCEL 
 # =========================================
 export_df = display_df[selected_columns]
 output = io.BytesIO()
