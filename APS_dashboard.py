@@ -59,6 +59,20 @@ def load_data():
     df = df[[c for c in desired_order if c in df.columns] + [c for c in df.columns if c not in desired_order]]
     return df
 
+def build_column_config_for_autowidth(df: pd.DataFrame, min_px=90, max_px=520, px_per_char=8):
+    """
+    Estimate a good column width (in px) based on the longest string in each column.
+    """
+    cfg = {}
+    for col in df.columns:
+        # compute max length among header + values
+        s = df[col].astype(str).fillna("")
+        max_len = max([len(str(col))] + s.map(len).tolist())
+        width_px = int(max_len * px_per_char + 24)  # +padding
+        width_px = max(min_px, min(max_px, width_px))
+        cfg[col] = st.column_config.Column(width=width_px)
+    return cfg
+
 df = load_data()
 
 # =========================================
@@ -254,7 +268,19 @@ selected_columns = [c for c in selected_columns if c in display_df.columns]
 # DISPLAY RESULTS
 # =========================================
 st.subheader(f"Showing {len(display_df)} Records")
-st.dataframe(display_df[selected_columns], use_container_width=True)
+# st.dataframe(display_df[selected_columns], use_container_width=True)
+table_df = display_df[selected_columns].copy()
+
+col_cfg = build_column_config_for_autowidth(table_df)
+
+st.data_editor(
+    table_df,
+    use_container_width=True,
+    hide_index=True,
+    disabled=True,          # read-only
+    column_config=col_cfg
+)
+
 
 # =========================================
 # DOWNLOAD EXCEL (formatted, with logo)
