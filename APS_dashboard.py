@@ -191,8 +191,8 @@ def apply_filters(df: pd.DataFrame, f: dict) -> pd.DataFrame:
     apply_in("Transceiver FW", f["selected_transceiver_fw"])
     apply_in("Time Stamp", f["selected_timestamp"])
 
-    if f["number_list"] and "Number" in out.columns:
-        out = out[out["Number"].isin(f["number_list"])]
+    # if f["number_list"] and "Number" in out.columns:
+    #     out = out[out["Number"].isin(f["number_list"])]
 
     if "W2P Measurement" in out.columns:
         if f["w2p_filter_type"] == "Above":
