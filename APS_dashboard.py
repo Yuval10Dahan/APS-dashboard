@@ -134,11 +134,11 @@ def sidebar_filters(df: pd.DataFrame):
             if selected_timestamp:
                 filtered_options_df = filtered_options_df[filtered_options_df["Time Stamp"].isin(selected_timestamp)]
 
-        st.header("🆔 Filter by Sample Number")
-        number_input = st.text_input("Enter sample numbers (comma-separated)", value="")
-        number_list = []
-        if number_input.strip():
-            number_list = [int(x.strip()) for x in number_input.split(",") if x.strip().isdigit()]
+        # st.header("🆔 Filter by Sample Number")
+        # number_input = st.text_input("Enter sample numbers (comma-separated)", value="")
+        # number_list = []
+        # if number_input.strip():
+        #     number_list = [int(x.strip()) for x in number_input.split(",") if x.strip().isdigit()]
 
         st.header("⏱️ W2P Filter")
         w2p_filter_type = st.radio("Filter W2P:", ["Show All", "Above", "Below"], horizontal=True, key="w2p_radio")
