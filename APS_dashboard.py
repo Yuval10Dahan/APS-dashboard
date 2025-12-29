@@ -4,7 +4,7 @@ st.set_page_config(page_title="APS Disruption Time Results", layout="wide", init
 import os
 import io
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from sqlalchemy import create_engine
 from PIL import Image
 
@@ -27,6 +27,7 @@ def load_data():
     if "Time Stamp" in df.columns:
         parsed = pd.to_datetime(df["Time Stamp"], errors="coerce", dayfirst=True)
         df["Time Stamp"] = parsed.dt.strftime("%Y-%m-%d %H:%M:%S")
+        # If parsing failed for some rows, keep original
         df.loc[parsed.isna(), "Time Stamp"] = df.loc[parsed.isna(), "Time Stamp"].astype(str)
 
     # Convert measurements to numeric
@@ -233,24 +234,39 @@ st.subheader("📈 Configuration Graph (W2P & P2W vs Sample Number)")
 
 graph_df = df.copy()
 
-# Build dependent selections for the graph (must)
 col_left, col_right = st.columns(2)
 
 with col_left:
-    g_product = st.selectbox("Product Name (required)", [""] + sorted(graph_df["Product Name"].dropna().unique())) if "Product Name" in graph_df.columns else ""
+    g_product = st.selectbox(
+        "Product Name (required)",
+        [""] + sorted(graph_df["Product Name"].dropna().unique())
+    ) if "Product Name" in graph_df.columns else ""
+
     if g_product:
         graph_df = graph_df[graph_df["Product Name"] == g_product]
 
-    g_protection = st.selectbox("Protection Type (required)", [""] + sorted(graph_df["Protection Type"].dropna().unique())) if "Protection Type" in graph_df.columns else ""
+    g_protection = st.selectbox(
+        "Protection Type (required)",
+        [""] + sorted(graph_df["Protection Type"].dropna().unique())
+    ) if "Protection Type" in graph_df.columns else ""
+
     if g_protection:
         graph_df = graph_df[graph_df["Protection Type"] == g_protection]
 
 with col_right:
-    g_sw = st.selectbox("Software Version (required)", [""] + sorted(graph_df["SoftWare Version"].dropna().unique())) if "SoftWare Version" in graph_df.columns else ""
+    g_sw = st.selectbox(
+        "Software Version (required)",
+        [""] + sorted(graph_df["SoftWare Version"].dropna().unique())
+    ) if "SoftWare Version" in graph_df.columns else ""
+
     if g_sw:
         graph_df = graph_df[graph_df["SoftWare Version"] == g_sw]
 
-    g_ts = st.selectbox("Date & Time (required)", [""] + sorted(graph_df["Time Stamp"].dropna().unique(), reverse=True)) if "Time Stamp" in graph_df.columns else ""
+    g_ts = st.selectbox(
+        "Date & Time (required)",
+        [""] + sorted(graph_df["Time Stamp"].dropna().unique(), reverse=True)
+    ) if "Time Stamp" in graph_df.columns else ""
+
     if g_ts:
         graph_df = graph_df[graph_df["Time Stamp"] == g_ts]
 
@@ -268,22 +284,48 @@ else:
         plot_df = plot_df.dropna(subset=["Number"])
         plot_df = plot_df.sort_values("Number")
 
-        # Build plot (no explicit colors)
-        fig, ax = plt.subplots()
-        ax.plot(plot_df["Number"], plot_df["W2P Measurement"], marker="o", linestyle="-", label="W2P (ms)")
-        ax.plot(plot_df["Number"], plot_df["P2W Measurement"], marker="o", linestyle="-", label="P2W (ms)")
-        ax.set_xlabel("Sample Number")
-        ax.set_ylabel("Disruption Time (ms)")
-        ax.set_title(f"W2P & P2W vs Sample Number | {g_product} | {g_protection} | {g_sw} | {g_ts}")
-        ax.grid(True, which="both", linestyle="--", linewidth=0.5)
-        ax.legend()
+        fig = go.Figure()
 
-        st.pyplot(fig, clear_figure=True)
+        fig.add_trace(
+            go.Scatter(
+                x=plot_df["Number"],
+                y=plot_df["W2P Measurement"],
+                mode="lines+markers",
+                name="W2P (ms)",
+                marker=dict(size=5),
+                line=dict(width=2),
+            )
+        )
 
-        # Optional: show the underlying samples
+        fig.add_trace(
+            go.Scatter(
+                x=plot_df["Number"],
+                y=plot_df["P2W Measurement"],
+                mode="lines+markers",
+                name="P2W (ms)",
+                marker=dict(size=5),
+                line=dict(width=2),
+            )
+        )
+
+        fig.update_layout(
+            title=f"W2P & P2W vs Sample Number<br>"
+                  f"<sup>{g_product} | {g_protection} | {g_sw} | {g_ts}</sup>",
+            xaxis_title="Sample Number",
+            yaxis_title="Disruption Time (ms)",
+            hovermode="x unified",
+            height=650,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        )
+
+        # ✅ super useful for big data
+        fig.update_xaxes(rangeslider_visible=True)
+        fig.update_yaxes(fixedrange=False)
+
+        st.plotly_chart(fig, use_container_width=True)
+
         with st.expander("Show samples used for the graph"):
-            show_cols = ["Number", "W2P Measurement", "P2W Measurement"]
-            st.dataframe(plot_df[show_cols], use_container_width=True)
+            st.dataframe(plot_df[["Number", "W2P Measurement", "P2W Measurement"]], use_container_width=True)
 
 # =========================================
 # DISPLAY RESULTS TABLE

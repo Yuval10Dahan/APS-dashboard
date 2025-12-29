@@ -5,3 +5,4 @@ pytz
 openpyxl
 XlsxWriter
 matplotlib
+plotly
