@@ -209,7 +209,7 @@ def apply_filters(df: pd.DataFrame, f: dict) -> pd.DataFrame:
     return out
 
 
-def calc_distribution(series: pd.Series) -> dict:
+def calc_distribution_old(series: pd.Series) -> dict:
     """
     Returns percent distribution of disruption time buckets:
       <1ms, 1-20ms, >20ms (same style as your screenshot)
@@ -235,8 +235,31 @@ def calc_distribution(series: pd.Series) -> dict:
         "Total Number of Measurements": total,
     }
 
+def calc_distribution(series: pd.Series) -> dict:
+    """
+    Returns percent distribution of disruption time buckets:
+      <1ms, 1-20ms, >20ms (same style as your screenshot)
+    """
+    s = pd.to_numeric(series, errors="coerce").dropna()
+    total = int(len(s))
+    if total == 0:
+        return {
+            "Below/Equal 50mSec [%]": 0.0,
+            "Above 50mSec [%]": 0.0,
+            "Total Number of Measurements": 0,
+        }
 
-def build_summary_table(filtered_df: pd.DataFrame) -> pd.DataFrame:
+    below_50 = (s <= 50).sum()
+    above_50 = (s > 50).sum()
+
+    return {
+        "Below/Equal 50mSec [%]": (below_50 / total) * 100.0,
+        "Above 50mSec [%]": (above_50 / total) * 100.0,
+        "Total Number of Measurements": total,
+    }
+
+
+def build_summary_table_old(filtered_df: pd.DataFrame) -> pd.DataFrame:
     """
     Default (hidden full table) summary:
     - group by unique "Time Stamp" + other config columns
@@ -268,6 +291,55 @@ def build_summary_table(filtered_df: pd.DataFrame) -> pd.DataFrame:
             "P2W Below 1ms [%]": p2w_dist["Below 1mSec [%]"],
             "P2W 1-20ms [%]": p2w_dist["1mSec Up to 20mSec [%]"],
             "P2W Above 20ms [%]": p2w_dist["Above 20mSec [%]"],
+
+            "Total Number of Measurements": int(len(g)),
+        })
+        rows.append(row)
+
+    out = pd.DataFrame(rows)
+
+    # nicer rounding like excel
+    pct_cols = [c for c in out.columns if c.endswith("[%]")]
+    out[pct_cols] = out[pct_cols].round(4)
+
+    # Put timestamp last among config columns (optional)
+    if "Time Stamp" in out.columns:
+        # show newest first
+        out = out.sort_values("Time Stamp", ascending=False)
+
+    return out
+
+
+def build_summary_table(filtered_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Default (hidden full table) summary:
+    - group by unique "Time Stamp" + other config columns
+    - show distribution + total measurements
+    """
+    cols_present = [c for c in CONFIG_COLS if c in filtered_df.columns]
+    if not cols_present:
+        return pd.DataFrame()
+
+    # group size = number of measurements rows
+    grouped = filtered_df.groupby(cols_present, dropna=False)
+
+    rows = []
+    for key, g in grouped:
+        # key may be scalar if single column, normalize to tuple
+        if not isinstance(key, tuple):
+            key = (key,)
+        row = dict(zip(cols_present, key))
+
+        # distribution on W2P + P2W, and total rows
+        w2p_dist = calc_distribution(g.get("W2P Measurement"))
+        p2w_dist = calc_distribution(g.get("P2W Measurement"))
+
+        row.update({
+            "W2P Below/Equal 50ms [%]": w2p_dist["Below/Equal 50mSec [%]"],
+            "W2P Above 50ms [%]": w2p_dist["Above 50mSec [%]"],
+
+            "P2W Below/Equal 50ms [%]": p2w_dist["Below/Equal 50mSec [%]"],
+            "P2W Above 50ms [%]": p2w_dist["Above 50mSec [%]"],
 
             "Total Number of Measurements": int(len(g)),
         })
