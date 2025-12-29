@@ -10,13 +10,12 @@ from PIL import Image
 # =========================================
 # CONFIG
 # =========================================
-DB_FILENAME = "APS_data_base2.db"               
-MAIN_TABLE = 'Disruption Time Measurement'     
-LOGO_FILENAME = "Packetlight Logo.png"         
+DB_FILENAME = "APS_data_base2.db"
+MAIN_TABLE = 'Disruption Time Measurement'
+LOGO_FILENAME = "Packetlight Logo.png"
 
 # --- DB Connection ---
 DB_PATH = os.path.join(os.path.dirname(__file__), DB_FILENAME)
-# DB_PATH = r"G:\Python\PacketLight Automation\Test_Cases\General Tests\APS Tests\APS_data_base2.db"
 engine = create_engine(f"sqlite:///{DB_PATH}")
 
 @st.cache_data
@@ -24,12 +23,14 @@ def load_data():
     # Read all columns from the main table (+ rowid for uniqueness)
     df = pd.read_sql(f'SELECT rowid as _rowid_, * FROM "{MAIN_TABLE}"', engine)
 
-    # Normalize timestamp column (your screenshot shows "Time Stamp")
+    # Normalize timestamp column (string format, so we can list unique timestamps in a multiselect)
     if "Time Stamp" in df.columns:
-        # Example: "16:48:51 10-08-2025" (time then date)
+        # Example input: "16:48:51 10-08-2025" (time then date)
         parsed = pd.to_datetime(df["Time Stamp"], errors="coerce", dayfirst=True)
-        if parsed.notna().any():
-            df["Time Stamp"] = parsed.dt.strftime("%Y-%m-%d %H:%M:%S")
+        # Keep as consistent string for filtering
+        df["Time Stamp"] = parsed.dt.strftime("%Y-%m-%d %H:%M:%S")
+        # If parsing failed for some rows, keep original (avoid "NaT" strings)
+        df.loc[parsed.isna(), "Time Stamp"] = df.loc[parsed.isna(), "Time Stamp"].astype(str)
 
     # Convert measurements to numeric
     for c in ["W2P Measurement", "P2W Measurement"]:
@@ -65,10 +66,9 @@ def build_column_config_for_autowidth(df: pd.DataFrame, min_px=90, max_px=380, p
     """
     cfg = {}
     for col in df.columns:
-        # compute max length among header + values
         s = df[col].astype(str).fillna("")
         max_len = max([len(str(col))] + s.map(len).tolist())
-        width_px = int(max_len * px_per_char + 24)  # +padding
+        width_px = int(max_len * px_per_char + 24)  # padding
         width_px = max(min_px, min(max_px, width_px))
         cfg[col] = st.column_config.Column(width=width_px)
     return cfg
@@ -193,6 +193,15 @@ with st.sidebar:
         if selected_transceiver_fw:
             filtered_options_df = filtered_options_df[filtered_options_df["Transceiver FW"].isin(selected_transceiver_fw)]
 
+    # ✅ Date & Time (Time Stamp) multiselect filter (like the others)
+    selected_timestamp = []
+    if "Time Stamp" in filtered_options_df.columns:
+        # show newest first (more convenient)
+        ts_options = sorted(filtered_options_df["Time Stamp"].dropna().unique(), reverse=True)
+        selected_timestamp = st.multiselect("Date & Time", ts_options)
+        if selected_timestamp:
+            filtered_options_df = filtered_options_df[filtered_options_df["Time Stamp"].isin(selected_timestamp)]
+
     # --- Filter by sample number ---
     st.header("🆔 Filter by Sample Number")
     number_input = st.text_input("Enter sample numbers (comma-separated)", value="")
@@ -241,6 +250,10 @@ if selected_transceiver_pn and "Transceiver PN" in filtered_df.columns:
 if selected_transceiver_fw and "Transceiver FW" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Transceiver FW"].isin(selected_transceiver_fw)]
 
+# ✅ apply timestamp filter
+if selected_timestamp and "Time Stamp" in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df["Time Stamp"].isin(selected_timestamp)]
+
 if number_list and "Number" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Number"].isin(number_list)]
 
@@ -261,16 +274,15 @@ if "P2W Measurement" in filtered_df.columns:
 # Rename columns for display
 display_df = filtered_df.rename(columns=display_columns_map)
 
-# Ensure selected columns exist (in case user toggled something odd)
+# Ensure selected columns exist
 selected_columns = [c for c in selected_columns if c in display_df.columns]
 
 # =========================================
 # DISPLAY RESULTS
 # =========================================
 st.subheader(f"Showing {len(display_df)} Records")
-# st.dataframe(display_df[selected_columns], use_container_width=True)
-table_df = display_df[selected_columns].copy()
 
+table_df = display_df[selected_columns].copy()
 col_cfg = build_column_config_for_autowidth(table_df)
 
 st.data_editor(
@@ -281,9 +293,8 @@ st.data_editor(
     column_config=col_cfg
 )
 
-
 # =========================================
-# DOWNLOAD EXCEL 
+# DOWNLOAD EXCEL
 # =========================================
 export_df = display_df[selected_columns]
 output = io.BytesIO()

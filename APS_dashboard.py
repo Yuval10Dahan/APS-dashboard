@@ -4,6 +4,7 @@ st.set_page_config(page_title="APS Disruption Time Results", layout="wide", init
 import os
 import io
 import pandas as pd
+import matplotlib.pyplot as plt
 from sqlalchemy import create_engine
 from PIL import Image
 
@@ -20,16 +21,12 @@ engine = create_engine(f"sqlite:///{DB_PATH}")
 
 @st.cache_data
 def load_data():
-    # Read all columns from the main table (+ rowid for uniqueness)
     df = pd.read_sql(f'SELECT rowid as _rowid_, * FROM "{MAIN_TABLE}"', engine)
 
-    # Normalize timestamp column (string format, so we can list unique timestamps in a multiselect)
+    # Normalize timestamp column for consistent dropdown + filtering
     if "Time Stamp" in df.columns:
-        # Example input: "16:48:51 10-08-2025" (time then date)
         parsed = pd.to_datetime(df["Time Stamp"], errors="coerce", dayfirst=True)
-        # Keep as consistent string for filtering
         df["Time Stamp"] = parsed.dt.strftime("%Y-%m-%d %H:%M:%S")
-        # If parsing failed for some rows, keep original (avoid "NaT" strings)
         df.loc[parsed.isna(), "Time Stamp"] = df.loc[parsed.isna(), "Time Stamp"].astype(str)
 
     # Convert measurements to numeric
@@ -41,7 +38,6 @@ def load_data():
     if "Number" in df.columns:
         df["Number"] = pd.to_numeric(df["Number"], errors="coerce")
 
-    # Order columns nicely (keep only those that exist)
     desired_order = [
         "_rowid_",
         "Product Name",
@@ -61,14 +57,11 @@ def load_data():
     return df
 
 def build_column_config_for_autowidth(df: pd.DataFrame, min_px=90, max_px=380, px_per_char=7):
-    """
-    Estimate a good column width (in px) based on the longest string in each column.
-    """
     cfg = {}
     for col in df.columns:
         s = df[col].astype(str).fillna("")
         max_len = max([len(str(col))] + s.map(len).tolist())
-        width_px = int(max_len * px_per_char + 24)  # padding
+        width_px = int(max_len * px_per_char + 24)
         width_px = max(min_px, min(max_px, width_px))
         cfg[col] = st.column_config.Column(width=width_px)
     return cfg
@@ -113,103 +106,67 @@ with st.sidebar:
 
     filtered_options_df = df.copy()
 
-    # Product Name
     selected_product = []
     if "Product Name" in filtered_options_df.columns:
-        selected_product = st.multiselect(
-            "Product Name",
-            sorted(filtered_options_df["Product Name"].dropna().unique())
-        )
+        selected_product = st.multiselect("Product Name", sorted(filtered_options_df["Product Name"].dropna().unique()))
         if selected_product:
             filtered_options_df = filtered_options_df[filtered_options_df["Product Name"].isin(selected_product)]
 
-    # Protection Type
     selected_protection = []
     if "Protection Type" in filtered_options_df.columns:
-        selected_protection = st.multiselect(
-            "Protection Type",
-            sorted(filtered_options_df["Protection Type"].dropna().unique())
-        )
+        selected_protection = st.multiselect("Protection Type", sorted(filtered_options_df["Protection Type"].dropna().unique()))
         if selected_protection:
             filtered_options_df = filtered_options_df[filtered_options_df["Protection Type"].isin(selected_protection)]
 
-    # Software Version
     selected_sw = []
     if "SoftWare Version" in filtered_options_df.columns:
-        selected_sw = st.multiselect(
-            "Software Version",
-            sorted(filtered_options_df["SoftWare Version"].dropna().unique())
-        )
+        selected_sw = st.multiselect("Software Version", sorted(filtered_options_df["SoftWare Version"].dropna().unique()))
         if selected_sw:
             filtered_options_df = filtered_options_df[filtered_options_df["SoftWare Version"].isin(selected_sw)]
 
-    # System Mode
     selected_mode = []
     if "System Mode" in filtered_options_df.columns:
-        selected_mode = st.multiselect(
-            "System Mode",
-            sorted(filtered_options_df["System Mode"].dropna().unique())
-        )
+        selected_mode = st.multiselect("System Mode", sorted(filtered_options_df["System Mode"].dropna().unique()))
         if selected_mode:
             filtered_options_df = filtered_options_df[filtered_options_df["System Mode"].isin(selected_mode)]
 
-    # Uplink Service Type
     selected_uplink = []
     if "Uplink Service Type" in filtered_options_df.columns:
-        selected_uplink = st.multiselect(
-            "Uplink Service Type",
-            sorted(filtered_options_df["Uplink Service Type"].dropna().unique())
-        )
+        selected_uplink = st.multiselect("Uplink Service Type", sorted(filtered_options_df["Uplink Service Type"].dropna().unique()))
         if selected_uplink:
             filtered_options_df = filtered_options_df[filtered_options_df["Uplink Service Type"].isin(selected_uplink)]
 
-    # Client Service Type
     selected_client = []
     if "Client Service Type" in filtered_options_df.columns:
-        selected_client = st.multiselect(
-            "Client Service Type",
-            sorted(filtered_options_df["Client Service Type"].dropna().unique())
-        )
+        selected_client = st.multiselect("Client Service Type", sorted(filtered_options_df["Client Service Type"].dropna().unique()))
         if selected_client:
             filtered_options_df = filtered_options_df[filtered_options_df["Client Service Type"].isin(selected_client)]
 
-    # Transceiver PN
     selected_transceiver_pn = []
     if "Transceiver PN" in filtered_options_df.columns:
-        selected_transceiver_pn = st.multiselect(
-            "Transceiver PN",
-            sorted(filtered_options_df["Transceiver PN"].dropna().unique())
-        )
+        selected_transceiver_pn = st.multiselect("Transceiver PN", sorted(filtered_options_df["Transceiver PN"].dropna().unique()))
         if selected_transceiver_pn:
             filtered_options_df = filtered_options_df[filtered_options_df["Transceiver PN"].isin(selected_transceiver_pn)]
 
-    # Transceiver FW
     selected_transceiver_fw = []
     if "Transceiver FW" in filtered_options_df.columns:
-        selected_transceiver_fw = st.multiselect(
-            "Transceiver FW",
-            sorted(filtered_options_df["Transceiver FW"].dropna().unique())
-        )
+        selected_transceiver_fw = st.multiselect("Transceiver FW", sorted(filtered_options_df["Transceiver FW"].dropna().unique()))
         if selected_transceiver_fw:
             filtered_options_df = filtered_options_df[filtered_options_df["Transceiver FW"].isin(selected_transceiver_fw)]
 
-    # ✅ Date & Time (Time Stamp) multiselect filter (like the others)
     selected_timestamp = []
     if "Time Stamp" in filtered_options_df.columns:
-        # show newest first (more convenient)
         ts_options = sorted(filtered_options_df["Time Stamp"].dropna().unique(), reverse=True)
         selected_timestamp = st.multiselect("Date & Time", ts_options)
         if selected_timestamp:
             filtered_options_df = filtered_options_df[filtered_options_df["Time Stamp"].isin(selected_timestamp)]
 
-    # --- Filter by sample number ---
     st.header("🆔 Filter by Sample Number")
     number_input = st.text_input("Enter sample numbers (comma-separated)", value="")
     number_list = []
     if number_input.strip():
         number_list = [int(x.strip()) for x in number_input.split(",") if x.strip().isdigit()]
 
-    # --- Measurement filters ---
     st.header("⏱️ W2P Filter")
     w2p_filter_type = st.radio("Filter W2P:", ["Show All", "Above", "Below"], horizontal=True, key="w2p_radio")
     w2p_threshold = st.number_input("W2P Threshold", min_value=0.0, step=0.1, key="w2p_thr")
@@ -218,14 +175,11 @@ with st.sidebar:
     p2w_filter_type = st.radio("Filter P2W:", ["Show All", "Above", "Below"], horizontal=True, key="p2w_radio")
     p2w_threshold = st.number_input("P2W Threshold", min_value=0.0, step=0.1, key="p2w_thr")
 
-    # --- Column toggles ---
     st.header("🧩 Columns to Display")
     st.caption("Toggle columns on/off to display in the table:")
 
     display_df_preview = df.rename(columns=display_columns_map)
-    checkbox_columns = {}
-    for col in display_df_preview.columns:
-        checkbox_columns[col] = st.checkbox(col, value=True)
+    checkbox_columns = {col: st.checkbox(col, value=True) for col in display_df_preview.columns}
     selected_columns = [col for col, show in checkbox_columns.items() if show]
 
 # =========================================
@@ -250,36 +204,91 @@ if selected_transceiver_pn and "Transceiver PN" in filtered_df.columns:
 if selected_transceiver_fw and "Transceiver FW" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Transceiver FW"].isin(selected_transceiver_fw)]
 
-# ✅ apply timestamp filter
 if selected_timestamp and "Time Stamp" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Time Stamp"].isin(selected_timestamp)]
 
 if number_list and "Number" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Number"].isin(number_list)]
 
-# W2P filter
 if "W2P Measurement" in filtered_df.columns:
     if w2p_filter_type == "Above":
         filtered_df = filtered_df[filtered_df["W2P Measurement"] > w2p_threshold]
     elif w2p_filter_type == "Below":
         filtered_df = filtered_df[filtered_df["W2P Measurement"] < w2p_threshold]
 
-# P2W filter
 if "P2W Measurement" in filtered_df.columns:
     if p2w_filter_type == "Above":
         filtered_df = filtered_df[filtered_df["P2W Measurement"] > p2w_threshold]
     elif p2w_filter_type == "Below":
         filtered_df = filtered_df[filtered_df["P2W Measurement"] < p2w_threshold]
 
-# Rename columns for display
 display_df = filtered_df.rename(columns=display_columns_map)
-
-# Ensure selected columns exist
 selected_columns = [c for c in selected_columns if c in display_df.columns]
 
 # =========================================
-# DISPLAY RESULTS
+# CONFIGURATION GRAPH (MANDATORY SELECTIONS)
 # =========================================
+st.divider()
+st.subheader("📈 Configuration Graph (W2P & P2W vs Sample Number)")
+
+graph_df = df.copy()
+
+# Build dependent selections for the graph (must)
+col_left, col_right = st.columns(2)
+
+with col_left:
+    g_product = st.selectbox("Product Name (required)", [""] + sorted(graph_df["Product Name"].dropna().unique())) if "Product Name" in graph_df.columns else ""
+    if g_product:
+        graph_df = graph_df[graph_df["Product Name"] == g_product]
+
+    g_protection = st.selectbox("Protection Type (required)", [""] + sorted(graph_df["Protection Type"].dropna().unique())) if "Protection Type" in graph_df.columns else ""
+    if g_protection:
+        graph_df = graph_df[graph_df["Protection Type"] == g_protection]
+
+with col_right:
+    g_sw = st.selectbox("Software Version (required)", [""] + sorted(graph_df["SoftWare Version"].dropna().unique())) if "SoftWare Version" in graph_df.columns else ""
+    if g_sw:
+        graph_df = graph_df[graph_df["SoftWare Version"] == g_sw]
+
+    g_ts = st.selectbox("Date & Time (required)", [""] + sorted(graph_df["Time Stamp"].dropna().unique(), reverse=True)) if "Time Stamp" in graph_df.columns else ""
+    if g_ts:
+        graph_df = graph_df[graph_df["Time Stamp"] == g_ts]
+
+can_plot = all([g_product, g_protection, g_sw, g_ts])
+
+if not can_plot:
+    st.info("Select ALL required fields: Product Name, Protection Type, Software Version, Date & Time to display the graph.")
+else:
+    needed_cols = {"Number", "W2P Measurement", "P2W Measurement"}
+    missing = [c for c in needed_cols if c not in graph_df.columns]
+    if missing:
+        st.error(f"Missing required columns for graph: {missing}")
+    else:
+        plot_df = graph_df.copy()
+        plot_df = plot_df.dropna(subset=["Number"])
+        plot_df = plot_df.sort_values("Number")
+
+        # Build plot (no explicit colors)
+        fig, ax = plt.subplots()
+        ax.plot(plot_df["Number"], plot_df["W2P Measurement"], marker="o", linestyle="-", label="W2P (ms)")
+        ax.plot(plot_df["Number"], plot_df["P2W Measurement"], marker="o", linestyle="-", label="P2W (ms)")
+        ax.set_xlabel("Sample Number")
+        ax.set_ylabel("Disruption Time (ms)")
+        ax.set_title(f"W2P & P2W vs Sample Number | {g_product} | {g_protection} | {g_sw} | {g_ts}")
+        ax.grid(True, which="both", linestyle="--", linewidth=0.5)
+        ax.legend()
+
+        st.pyplot(fig, clear_figure=True)
+
+        # Optional: show the underlying samples
+        with st.expander("Show samples used for the graph"):
+            show_cols = ["Number", "W2P Measurement", "P2W Measurement"]
+            st.dataframe(plot_df[show_cols], use_container_width=True)
+
+# =========================================
+# DISPLAY RESULTS TABLE
+# =========================================
+st.divider()
 st.subheader(f"Showing {len(display_df)} Records")
 
 table_df = display_df[selected_columns].copy()
@@ -289,7 +298,7 @@ st.data_editor(
     table_df,
     use_container_width=True,
     hide_index=False,
-    disabled=True,          # read-only
+    disabled=True,
     column_config=col_cfg
 )
 
@@ -306,11 +315,9 @@ with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
     workbook = writer.book
     worksheet = writer.sheets[sheet_name]
 
-    # Insert PacketLight Logo
     if os.path.exists(logo_path):
         worksheet.insert_image("A1", logo_path, {"x_scale": 0.5, "y_scale": 0.5})
 
-    # Title
     title_format = workbook.add_format({
         "bold": True,
         "font_size": 16,
@@ -319,7 +326,6 @@ with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
     })
     worksheet.write("A4", "PacketLight APS Disruption Time Results", title_format)
 
-    # Header formatting
     header_format = workbook.add_format({
         "bold": True,
         "align": "center",
@@ -330,7 +336,6 @@ with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
     for col_num, value in enumerate(export_df.columns.values):
         worksheet.write(5, col_num, value, header_format)
 
-    # Cell formatting
     cell_format = workbook.add_format({
         "align": "center",
         "valign": "vcenter",
@@ -340,12 +345,10 @@ with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         for col in range(len(export_df.columns)):
             worksheet.write(row + 6, col, export_df.iloc[row, col], cell_format)
 
-    # Auto-fit column widths
     for i, col in enumerate(export_df.columns):
         max_len = max(export_df[col].astype(str).map(len).max(), len(col)) + 2
         worksheet.set_column(i, i, max_len)
 
-    # Freeze header
     worksheet.freeze_panes(6, 0)
 
 output.seek(0)
