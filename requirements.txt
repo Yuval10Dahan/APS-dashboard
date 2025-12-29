@@ -4,3 +4,4 @@ sqlalchemy
 pytz
 openpyxl
 XlsxWriter
+matplotlib
