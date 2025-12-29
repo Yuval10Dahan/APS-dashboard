@@ -296,8 +296,10 @@ def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | No
             title_format = workbook.add_format({"bold": True, "font_size": 16, "align": "left", "valign": "vcenter"})
             worksheet.write("A4", title, title_format)
 
-        header_format = workbook.add_format({"bold": True, "align": "center", "valign": "vcenter",
-                                             "bg_color": "#D9E1F2", "border": 1})
+        header_format = workbook.add_format({
+            "bold": True, "align": "center", "valign": "vcenter",
+            "bg_color": "#D9E1F2", "border": 1
+        })
         for col_num, value in enumerate(df.columns.values):
             worksheet.write(start_row, col_num, value, header_format)
 
@@ -316,21 +318,157 @@ def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | No
     return output.getvalue()
 
 
+def render_graph_by_combination_id(
+    filtered_original_df: pd.DataFrame,
+    summary_df_original: pd.DataFrame,
+    id_col: str = "Combination ID",
+):
+    """
+    User inputs a Combination ID (from summary table) -> show graphs for that combination.
+    Uses FILTERED dataset (same as summary/full table).
+    """
+    st.divider()
+    st.subheader("📈 Generate Graph by Combination ID")
+
+    if summary_df_original.empty:
+        st.info("No combinations available to plot.")
+        return
+
+    max_id = int(summary_df_original[id_col].max()) if id_col in summary_df_original.columns else 0
+    comb_id = st.number_input(
+        "Enter Combination ID",
+        min_value=1,
+        max_value=max(1, max_id),
+        value=1,
+        step=1,
+        key="comb_id_input",
+    )
+
+    if st.button("📊 Generate Graph", key="btn_graph_by_id"):
+        if id_col not in summary_df_original.columns:
+            st.error("Internal error: Summary table does not include Combination ID.")
+            return
+
+        row = summary_df_original.loc[summary_df_original[id_col] == int(comb_id)]
+        if row.empty:
+            st.error(f"Combination ID {comb_id} not found.")
+            return
+
+        # Build mask from CONFIG_COLS values in that combination row
+        cfg_cols_present = [c for c in CONFIG_COLS if c in filtered_original_df.columns and c in row.columns]
+        if not cfg_cols_present:
+            st.error("Missing configuration columns for filtering the combination.")
+            return
+
+        mask = pd.Series(True, index=filtered_original_df.index)
+        for c in cfg_cols_present:
+            v = row.iloc[0][c]
+            if pd.isna(v):
+                mask &= filtered_original_df[c].isna()
+            else:
+                mask &= (filtered_original_df[c] == v)
+
+        plot_df = filtered_original_df.loc[mask].copy()
+
+        required_cols = {"Number", "W2P Measurement", "P2W Measurement"}
+        miss_cols = [c for c in required_cols if c not in plot_df.columns]
+        if miss_cols:
+            st.error(f"Missing required columns: {miss_cols}")
+            return
+
+        plot_df = plot_df.dropna(subset=["Number"]).sort_values("Number")
+        if plot_df.empty:
+            st.warning("No samples to plot for this Combination ID (after filters).")
+            return
+
+        # Title details from the configuration
+        details_parts = []
+        for c in ["Product Name", "Protection Type", "SoftWare Version", "System Mode",
+                  "Uplink Service Type", "Client Service Type", "Transceiver PN", "Transceiver FW", "Time Stamp"]:
+            if c in row.columns:
+                val = row.iloc[0][c]
+                if pd.isna(val):
+                    continue
+                details_parts.append(str(val))
+        details = " | ".join(details_parts[:4])  # keep it short in title
+        title_prefix = "APS Disruption Time"
+        if details:
+            title_prefix += f"<br><sup>{details}</sup>"
+
+        # Y range with padding
+        w2p = plot_df["W2P Measurement"]
+        p2w = plot_df["P2W Measurement"]
+        y_min = pd.concat([w2p, p2w]).min()
+        y_max = pd.concat([w2p, p2w]).max()
+        pad = (y_max - y_min) * 0.05 if y_max > y_min else 1
+        y_range = [y_min - pad, y_max + pad]
+
+        # W2P graph
+        fig1 = go.Figure()
+        fig1.add_trace(go.Scatter(
+            x=plot_df["Number"], y=w2p, mode="lines", name="W2P (ms)",
+            line=dict(width=2),
+            connectgaps=True
+        ))
+        fig1.update_layout(
+            title=dict(text=f"{title_prefix}<br><sup>W2P</sup>", x=0.5),
+            xaxis=dict(title="Cycle / Sample Number", tickangle=90, nticks=35, showgrid=False),
+            yaxis=dict(title="Disruption Time (mSec)", showgrid=True, range=y_range),
+            plot_bgcolor="white", paper_bgcolor="white",
+            hovermode="x unified",
+            height=420,
+            margin=dict(l=60, r=30, t=80, b=80),
+        )
+        fig1.update_xaxes(rangeslider_visible=False)
+        st.plotly_chart(fig1, use_container_width=True)
+
+        st.divider()
+
+        # P2W graph
+        fig2 = go.Figure()
+        fig2.add_trace(go.Scatter(
+            x=plot_df["Number"], y=p2w, mode="lines", name="P2W (ms)",
+            line=dict(width=2),
+            connectgaps=True
+        ))
+        fig2.update_layout(
+            title=dict(text=f"{title_prefix}<br><sup>P2W</sup>", x=0.5),
+            xaxis=dict(title="Cycle / Sample Number", tickangle=90, nticks=35, showgrid=False),
+            yaxis=dict(title="Disruption Time (mSec)", showgrid=True, range=y_range),
+            plot_bgcolor="white", paper_bgcolor="white",
+            hovermode="x unified",
+            height=420,
+            margin=dict(l=60, r=30, t=80, b=80),
+        )
+        fig2.update_xaxes(rangeslider_visible=False)
+        st.plotly_chart(fig2, use_container_width=True)
+
+        with st.expander("Show samples used"):
+            st.dataframe(plot_df[["Number", "W2P Measurement", "P2W Measurement"]], use_container_width=True)
+
+
 def render_records_section(display_df: pd.DataFrame, selected_columns: list[str], logo_path: str):
     """
     - Two tabs:
         1) Summary by Configuration:
-            - header: Showing X Combinations
-            - download button: Download Combinations Results - Excel File (downloads the combinations table)
+            - add "Combination ID" column (1..N)
+            - download button: Download Combinations Results - Excel File
         2) Full table:
-            - header: Showing Y Records
-            - download button: Download Filtered Results - Excel File (downloads the filtered records table)
+            - download button: Download Filtered Results - Excel File
+    Returns:
+        summary_df_original (with ID, original names) for graph-by-id
     """
     st.divider()
 
     # Build summary (needs original names)
     original_names_df = display_df.rename(columns={v: k for k, v in DISPLAY_COLUMNS_MAP.items()})
     summary_df = build_summary_table(original_names_df)
+
+    # Add Combination ID (stable-ish: based on current filtered view sorted by Time Stamp desc)
+    if not summary_df.empty:
+        summary_df = summary_df.reset_index(drop=True)
+        summary_df.insert(0, "Combination ID", range(1, len(summary_df) + 1))
+
     combinations_count = int(len(summary_df))
 
     tab_summary, tab_full = st.tabs(["Summary by Configuration", "Show Measurements Full Table"])
@@ -394,162 +532,7 @@ def render_records_section(display_df: pd.DataFrame, selected_columns: list[str]
                 key="dl_records",
             )
 
-
-def render_config_graph_wizard(df: pd.DataFrame):
-    st.divider()
-    st.subheader("📈 Configuration Graph (Generate)")
-
-    base_graph_df = df.copy()
-
-    def _opts(col: str):
-        if col not in base_graph_df.columns:
-            return []
-        return sorted([x for x in base_graph_df[col].dropna().unique()])
-
-    product_opts = _opts("Product Name")
-    g_product = st.selectbox(
-        "Product Name" + (" (required)" if product_opts else " (no data)"),
-        [""] + product_opts,
-        disabled=(len(product_opts) == 0),
-        key="g_product"
-    )
-    if g_product:
-        base_graph_df = base_graph_df[base_graph_df["Product Name"] == g_product]
-
-    protection_opts = _opts("Protection Type")
-    g_protection = st.selectbox(
-        "Protection Type" + (" (required)" if protection_opts else " (not required)"),
-        [""] + protection_opts,
-        disabled=(len(protection_opts) == 0),
-        key="g_protection"
-    )
-    if g_protection:
-        base_graph_df = base_graph_df[base_graph_df["Protection Type"] == g_protection]
-
-    sw_opts = _opts("SoftWare Version")
-    g_sw = st.selectbox(
-        "Software Version" + (" (required)" if sw_opts else " (not required)"),
-        [""] + sw_opts,
-        disabled=(len(sw_opts) == 0),
-        key="g_sw"
-    )
-    if g_sw:
-        base_graph_df = base_graph_df[base_graph_df["SoftWare Version"] == g_sw]
-
-    ts_opts = sorted(_opts("Time Stamp"), reverse=True)
-    g_ts = st.selectbox(
-        "Date & Time" + (" (required)" if ts_opts else " (not required)"),
-        [""] + ts_opts,
-        disabled=(len(ts_opts) == 0),
-        key="g_ts"
-    )
-    if g_ts:
-        base_graph_df = base_graph_df[base_graph_df["Time Stamp"] == g_ts]
-
-    with st.expander("Graph options"):
-        show_markers = st.checkbox("Show markers", value=False, key="g_markers")
-        use_log_y = st.checkbox("Log scale (Y)", value=False, key="g_logy")
-        y_pad_pct = st.slider("Y padding (%)", min_value=0, max_value=30, value=5, step=1, key="g_pad")
-
-    requirements = {
-        "Product Name": (len(product_opts) == 0) or bool(g_product),
-        "Protection Type": (len(protection_opts) == 0) or bool(g_protection),
-        "Software Version": (len(sw_opts) == 0) or bool(g_sw),
-        "Date & Time": (len(ts_opts) == 0) or bool(g_ts),
-    }
-    all_ready = all(requirements.values())
-    missing = [k for k, ok in requirements.items() if not ok]
-
-    if not all_ready:
-        st.info("Select values for: " + ", ".join(missing))
-        return
-
-    st.success("Click **Generate Graph**")
-    generate = st.button("📊 Generate Graph", key="g_generate")
-
-    @st.dialog("Generated Graphs", width="large")
-    def graph_dialog(plot_df: pd.DataFrame, title_prefix: str):
-        required_cols = {"Number", "W2P Measurement", "P2W Measurement"}
-        miss_cols = [c for c in required_cols if c not in plot_df.columns]
-        if miss_cols:
-            st.error(f"Missing required columns: {miss_cols}")
-            return
-
-        plot_df = plot_df.dropna(subset=["Number"]).sort_values("Number")
-        if plot_df.empty:
-            st.warning("No samples to plot after filtering.")
-            return
-
-        w2p = plot_df["W2P Measurement"]
-        p2w = plot_df["P2W Measurement"]
-
-        y_min = pd.concat([w2p, p2w]).min()
-        y_max = pd.concat([w2p, p2w]).max()
-        if pd.isna(y_min) or pd.isna(y_max):
-            st.warning("No valid measurements to plot.")
-            return
-
-        pad = (y_max - y_min) * (y_pad_pct / 100.0) if y_max > y_min else 1
-        y_range = [y_min - pad, y_max + pad]
-        mode = "lines+markers" if show_markers else "lines"
-
-        # W2P graph
-        fig1 = go.Figure()
-        fig1.add_trace(go.Scatter(
-            x=plot_df["Number"], y=w2p, mode=mode, name="W2P (ms)",
-            line=dict(width=2),
-            marker=dict(size=4) if show_markers else None,
-            connectgaps=True
-        ))
-        fig1.update_layout(
-            title=dict(text=f"{title_prefix}<br><sup>W2P</sup>", x=0.5),
-            xaxis=dict(title="Cycle / Sample Number", tickangle=90, nticks=35, showgrid=False),
-            yaxis=dict(title="Disruption Time (mSec)", showgrid=True),
-            plot_bgcolor="white", paper_bgcolor="white",
-            hovermode="x unified",
-            height=420,
-            margin=dict(l=60, r=30, t=80, b=80),
-        )
-        fig1.update_xaxes(rangeslider_visible=False)
-        fig1.update_yaxes(type="log" if use_log_y else "linear")
-        if not use_log_y:
-            fig1.update_yaxes(range=y_range)
-        st.plotly_chart(fig1, use_container_width=True)
-
-        st.divider()
-
-        # P2W graph
-        fig2 = go.Figure()
-        fig2.add_trace(go.Scatter(
-            x=plot_df["Number"], y=p2w, mode=mode, name="P2W (ms)",
-            line=dict(width=2),
-            marker=dict(size=4) if show_markers else None,
-            connectgaps=True
-        ))
-        fig2.update_layout(
-            title=dict(text=f"{title_prefix}<br><sup>P2W</sup>", x=0.5),
-            xaxis=dict(title="Cycle / Sample Number", tickangle=90, nticks=35, showgrid=False),
-            yaxis=dict(title="Disruption Time (mSec)", showgrid=True),
-            plot_bgcolor="white", paper_bgcolor="white",
-            hovermode="x unified",
-            height=420,
-            margin=dict(l=60, r=30, t=80, b=80),
-        )
-        fig2.update_xaxes(rangeslider_visible=False)
-        fig2.update_yaxes(type="log" if use_log_y else "linear")
-        if not use_log_y:
-            fig2.update_yaxes(range=y_range)
-        st.plotly_chart(fig2, use_container_width=True)
-
-        with st.expander("Show samples used"):
-            st.dataframe(plot_df[["Number", "W2P Measurement", "P2W Measurement"]], use_container_width=True)
-
-    if generate:
-        details = " | ".join([x for x in [g_product, g_protection, g_sw, g_ts] if x])
-        title_prefix = "APS Disruption Time"
-        if details:
-            title_prefix += f"<br><sup>{details}</sup>"
-        graph_dialog(base_graph_df, title_prefix)
+    return original_names_df, summary_df
 
 
 # =========================================
@@ -573,8 +556,8 @@ filtered_df = apply_filters(df, filters)
 display_df = filtered_df.rename(columns=DISPLAY_COLUMNS_MAP)
 selected_columns = [c for c in selected_columns if c in display_df.columns]
 
-# Records section FIRST (each tab has its own download button + different excel content)
-render_records_section(display_df, selected_columns, logo_path)
+# Records section FIRST
+filtered_original_df, summary_df_original = render_records_section(display_df, selected_columns, logo_path)
 
-# Graph section after table
-render_config_graph_wizard(df)
+# Graph generation by Combination ID (instead of wizard)
+render_graph_by_combination_id(filtered_original_df, summary_df_original, id_col="Combination ID")
