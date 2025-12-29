@@ -27,7 +27,6 @@ def load_data():
     if "Time Stamp" in df.columns:
         parsed = pd.to_datetime(df["Time Stamp"], errors="coerce", dayfirst=True)
         df["Time Stamp"] = parsed.dt.strftime("%Y-%m-%d %H:%M:%S")
-        # If parsing failed for some rows, keep original
         df.loc[parsed.isna(), "Time Stamp"] = df.loc[parsed.isna(), "Time Stamp"].astype(str)
 
     # Convert measurements to numeric
@@ -178,7 +177,6 @@ with st.sidebar:
 
     st.header("🧩 Columns to Display")
     st.caption("Toggle columns on/off to display in the table:")
-
     display_df_preview = df.rename(columns=display_columns_map)
     checkbox_columns = {col: st.checkbox(col, value=True) for col in display_df_preview.columns}
     selected_columns = [col for col, show in checkbox_columns.items() if show]
@@ -204,7 +202,6 @@ if selected_transceiver_pn and "Transceiver PN" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Transceiver PN"].isin(selected_transceiver_pn)]
 if selected_transceiver_fw and "Transceiver FW" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Transceiver FW"].isin(selected_transceiver_fw)]
-
 if selected_timestamp and "Time Stamp" in filtered_df.columns:
     filtered_df = filtered_df[filtered_df["Time Stamp"].isin(selected_timestamp)]
 
@@ -227,105 +224,134 @@ display_df = filtered_df.rename(columns=display_columns_map)
 selected_columns = [c for c in selected_columns if c in display_df.columns]
 
 # =========================================
-# CONFIGURATION GRAPH (MANDATORY SELECTIONS)
+# CONFIGURATION GRAPH (EXCEL-LIKE)
 # =========================================
 st.divider()
-st.subheader("📈 Configuration Graph (W2P & P2W vs Sample Number)")
+st.subheader("📈 Configuration Graph (Excel-like)")
 
-graph_df = df.copy()
+base_graph_df = df.copy()
 
-col_left, col_right = st.columns(2)
-
-with col_left:
-    g_product = st.selectbox(
-        "Product Name (required)",
-        [""] + sorted(graph_df["Product Name"].dropna().unique())
-    ) if "Product Name" in graph_df.columns else ""
-
+c1, c2 = st.columns(2)
+with c1:
+    g_product = st.selectbox("Product Name (required)", [""] + sorted(base_graph_df["Product Name"].dropna().unique())) if "Product Name" in base_graph_df.columns else ""
     if g_product:
-        graph_df = graph_df[graph_df["Product Name"] == g_product]
+        base_graph_df = base_graph_df[base_graph_df["Product Name"] == g_product]
 
-    g_protection = st.selectbox(
-        "Protection Type (required)",
-        [""] + sorted(graph_df["Protection Type"].dropna().unique())
-    ) if "Protection Type" in graph_df.columns else ""
-
+    g_protection = st.selectbox("Protection Type (required)", [""] + sorted(base_graph_df["Protection Type"].dropna().unique())) if "Protection Type" in base_graph_df.columns else ""
     if g_protection:
-        graph_df = graph_df[graph_df["Protection Type"] == g_protection]
+        base_graph_df = base_graph_df[base_graph_df["Protection Type"] == g_protection]
 
-with col_right:
-    g_sw = st.selectbox(
-        "Software Version (required)",
-        [""] + sorted(graph_df["SoftWare Version"].dropna().unique())
-    ) if "SoftWare Version" in graph_df.columns else ""
-
+with c2:
+    g_sw = st.selectbox("Software Version (required)", [""] + sorted(base_graph_df["SoftWare Version"].dropna().unique())) if "SoftWare Version" in base_graph_df.columns else ""
     if g_sw:
-        graph_df = graph_df[graph_df["SoftWare Version"] == g_sw]
+        base_graph_df = base_graph_df[base_graph_df["SoftWare Version"] == g_sw]
 
-    g_ts = st.selectbox(
-        "Date & Time (required)",
-        [""] + sorted(graph_df["Time Stamp"].dropna().unique(), reverse=True)
-    ) if "Time Stamp" in graph_df.columns else ""
-
+    g_ts = st.selectbox("Date & Time (required)", [""] + sorted(base_graph_df["Time Stamp"].dropna().unique(), reverse=True)) if "Time Stamp" in base_graph_df.columns else ""
     if g_ts:
-        graph_df = graph_df[graph_df["Time Stamp"] == g_ts]
+        base_graph_df = base_graph_df[base_graph_df["Time Stamp"] == g_ts]
 
 can_plot = all([g_product, g_protection, g_sw, g_ts])
 
+# Small style controls (optional)
+with st.expander("Graph options"):
+    show_markers = st.checkbox("Show markers", value=False)
+    use_log_y = st.checkbox("Log scale (Y)", value=False)
+    y_pad_pct = st.slider("Y padding (%)", min_value=0, max_value=30, value=5, step=1)
+
 if not can_plot:
-    st.info("Select ALL required fields: Product Name, Protection Type, Software Version, Date & Time to display the graph.")
+    st.info("Select ALL required fields: Product Name, Protection Type, Software Version, Date & Time.")
 else:
-    needed_cols = {"Number", "W2P Measurement", "P2W Measurement"}
-    missing = [c for c in needed_cols if c not in graph_df.columns]
+    required = {"Number", "W2P Measurement", "P2W Measurement"}
+    missing = [c for c in required if c not in base_graph_df.columns]
     if missing:
         st.error(f"Missing required columns for graph: {missing}")
     else:
-        plot_df = graph_df.copy()
-        plot_df = plot_df.dropna(subset=["Number"])
-        plot_df = plot_df.sort_values("Number")
+        plot_df = base_graph_df.dropna(subset=["Number"]).sort_values("Number")
 
-        fig = go.Figure()
+        # (Optional) remove NaN measurements so lines don’t break weirdly
+        w2p_y = plot_df["W2P Measurement"]
+        p2w_y = plot_df["P2W Measurement"]
 
-        fig.add_trace(
-            go.Scatter(
-                x=plot_df["Number"],
-                y=plot_df["W2P Measurement"],
-                mode="lines+markers",
-                name="W2P (ms)",
-                marker=dict(size=5),
-                line=dict(width=2),
+        # Y range padding (like Excel leaving headroom)
+        y_min = pd.concat([w2p_y, p2w_y]).min()
+        y_max = pd.concat([w2p_y, p2w_y]).max()
+        if pd.isna(y_min) or pd.isna(y_max):
+            st.warning("No valid measurements to plot for this configuration.")
+        else:
+            pad = (y_max - y_min) * (y_pad_pct / 100.0) if y_max > y_min else 1
+            y_range = [y_min - pad, y_max + pad]
+
+            mode = "lines+markers" if show_markers else "lines"
+
+            fig = go.Figure()
+
+            # Lines only -> looks like your Excel chart
+            fig.add_trace(
+                go.Scatter(
+                    x=plot_df["Number"],
+                    y=w2p_y,
+                    mode=mode,
+                    name="W2P (ms)",
+                    line=dict(width=2),
+                    marker=dict(size=4) if show_markers else None,
+                    connectgaps=True
+                )
             )
-        )
-
-        fig.add_trace(
-            go.Scatter(
-                x=plot_df["Number"],
-                y=plot_df["P2W Measurement"],
-                mode="lines+markers",
-                name="P2W (ms)",
-                marker=dict(size=5),
-                line=dict(width=2),
+            fig.add_trace(
+                go.Scatter(
+                    x=plot_df["Number"],
+                    y=p2w_y,
+                    mode=mode,
+                    name="P2W (ms)",
+                    line=dict(width=2),
+                    marker=dict(size=4) if show_markers else None,
+                    connectgaps=True
+                )
             )
-        )
 
-        fig.update_layout(
-            title=f"W2P & P2W vs Sample Number<br>"
-                  f"<sup>{g_product} | {g_protection} | {g_sw} | {g_ts}</sup>",
-            xaxis_title="Sample Number",
-            yaxis_title="Disruption Time (ms)",
-            hovermode="x unified",
-            height=650,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        )
+            fig.update_layout(
+                title=dict(
+                    text=f"Disruption Protection-Working<br><sup>{g_product} | {g_protection} | {g_sw} | {g_ts}</sup>",
+                    x=0.5
+                ),
+                xaxis=dict(
+                    title="Cycle / Sample Number",
+                    showgrid=False,
+                    ticks="outside",
+                    tickangle=90,
+                    # show fewer ticks automatically
+                    nticks=35
+                ),
+                yaxis=dict(
+                    title="Disruption Time (mSec)",
+                    showgrid=True,
+                    gridwidth=1
+                ),
+                plot_bgcolor="white",
+                paper_bgcolor="white",
+                hovermode="x unified",
+                height=650,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=60, r=30, t=90, b=80),
+            )
 
-        # ✅ super useful for big data
-        fig.update_xaxes(rangeslider_visible=True)
-        fig.update_yaxes(fixedrange=False)
+            # Only horizontal gridlines (like Excel)
+            fig.update_yaxes(showgrid=True, zeroline=False)
+            fig.update_xaxes(showgrid=False)
 
-        st.plotly_chart(fig, use_container_width=True)
+            # Y axis range + optional log
+            if use_log_y:
+                fig.update_yaxes(type="log")
+            else:
+                fig.update_yaxes(range=y_range)
 
-        with st.expander("Show samples used for the graph"):
-            st.dataframe(plot_df[["Number", "W2P Measurement", "P2W Measurement"]], use_container_width=True)
+            # Keep the plot interactive (zoom/pan) but remove the range slider if you prefer Excel-like
+            fig.update_xaxes(rangeslider_visible=False)
+
+            st.plotly_chart(fig, use_container_width=True)
+
+            with st.expander("Show samples used for the graph"):
+                st.dataframe(plot_df[["Number", "W2P Measurement", "P2W Measurement"]], use_container_width=True)
 
 # =========================================
 # DISPLAY RESULTS TABLE
