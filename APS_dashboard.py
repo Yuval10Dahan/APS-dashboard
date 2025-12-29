@@ -91,7 +91,7 @@ def sidebar_filters(df: pd.DataFrame):
       - selected_columns (renamed columns selected for table)
     """
     with st.sidebar:
-        st.subheader("Contact: Yuval Dahan")
+        st.subheader("Contact: Yuval Dahan + Yoni Ziskind")
         st.header("🔍 Filters")
 
         filtered_options_df = df.copy()
