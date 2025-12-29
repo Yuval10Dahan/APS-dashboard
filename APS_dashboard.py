@@ -531,9 +531,6 @@ selected_columns = [c for c in selected_columns if c in display_df.columns]
 # Records section FIRST (dynamic header per tab)
 render_records_section(display_df, selected_columns)
 
-# Graph section after table
-render_config_graph_wizard(df)
-
 # Export (based on current filtered display)
 excel_bytes = build_excel_bytes(display_df, selected_columns, logo_path)
 st.download_button(
@@ -542,3 +539,7 @@ st.download_button(
     file_name="aps_results.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
+# Graph section after table
+render_config_graph_wizard(df)
+
