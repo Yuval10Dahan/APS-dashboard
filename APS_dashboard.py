@@ -34,7 +34,7 @@ DISPLAY_COLUMNS_MAP = {
     "P2W Measurement": "P2W (ms)",
 }
 
-# The columns that define a "configuration" for summary
+# The columns that define a "configuration" (combinations)
 CONFIG_COLS = [
     "Product Name",
     "Protection Type",
@@ -101,7 +101,7 @@ def build_column_config_for_autowidth(df: pd.DataFrame, min_px=90, max_px=380, p
 
 def sidebar_filters(df: pd.DataFrame):
     """
-    Sidebar filters (interdependent options) + columns-to-display (table).
+    Sidebar filters (interdependent options) + columns-to-display (full table).
     """
     with st.sidebar:
         st.subheader("Contact: Yuval Dahan")
@@ -233,12 +233,15 @@ def calc_distribution(series: pd.Series) -> dict:
     }
 
 
-def build_summary_table(filtered_df: pd.DataFrame) -> pd.DataFrame:
-    cols_present = [c for c in CONFIG_COLS if c in filtered_df.columns]
+def build_summary_table(filtered_df_original_names: pd.DataFrame) -> pd.DataFrame:
+    """
+    filtered_df_original_names: must contain original DB column names.
+    """
+    cols_present = [c for c in CONFIG_COLS if c in filtered_df_original_names.columns]
     if not cols_present:
         return pd.DataFrame()
 
-    grouped = filtered_df.groupby(cols_present, dropna=False)
+    grouped = filtered_df_original_names.groupby(cols_present, dropna=False)
 
     rows = []
     for key, g in grouped:
@@ -269,15 +272,63 @@ def build_summary_table(filtered_df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def render_records_section(display_df: pd.DataFrame, selected_columns: list[str]):
+def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | None = None,
+                      title: str | None = None) -> bytes:
+    """
+    Generic dataframe -> xlsx bytes (with optional logo + title).
+    """
+    output = io.BytesIO()
+
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        start_row = 0
+        if logo_path and os.path.exists(logo_path):
+            start_row = 5  # leave space for logo/title
+
+        df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=start_row)
+
+        workbook = writer.book
+        worksheet = writer.sheets[sheet_name]
+
+        if logo_path and os.path.exists(logo_path):
+            worksheet.insert_image("A1", logo_path, {"x_scale": 0.5, "y_scale": 0.5})
+
+        if title:
+            title_format = workbook.add_format({"bold": True, "font_size": 16, "align": "left", "valign": "vcenter"})
+            worksheet.write("A4", title, title_format)
+
+        header_format = workbook.add_format({"bold": True, "align": "center", "valign": "vcenter",
+                                             "bg_color": "#D9E1F2", "border": 1})
+        for col_num, value in enumerate(df.columns.values):
+            worksheet.write(start_row, col_num, value, header_format)
+
+        cell_format = workbook.add_format({"align": "center", "valign": "vcenter", "border": 1})
+        for r in range(len(df)):
+            for c in range(len(df.columns)):
+                worksheet.write(start_row + 1 + r, c, df.iloc[r, c], cell_format)
+
+        for i, col in enumerate(df.columns):
+            max_len = max(df[col].astype(str).map(len).max(), len(col)) + 2
+            worksheet.set_column(i, i, max_len)
+
+        worksheet.freeze_panes(start_row + 1, 0)
+
+    output.seek(0)
+    return output.getvalue()
+
+
+def render_records_section(display_df: pd.DataFrame, selected_columns: list[str], logo_path: str):
     """
     - Two tabs:
-        1) Summary by Configuration -> title shows combinations count
-        2) Full table -> title shows records count
+        1) Summary by Configuration:
+            - header: Showing X Combinations
+            - download button: Download Combinations Results - Excel File (downloads the combinations table)
+        2) Full table:
+            - header: Showing Y Records
+            - download button: Download Filtered Results - Excel File (downloads the filtered records table)
     """
     st.divider()
 
-    # Build summary count (unique combinations based on summary grouping)
+    # Build summary (needs original names)
     original_names_df = display_df.rename(columns={v: k for k, v in DISPLAY_COLUMNS_MAP.items()})
     summary_df = build_summary_table(original_names_df)
     combinations_count = int(len(summary_df))
@@ -294,8 +345,23 @@ def render_records_section(display_df: pd.DataFrame, selected_columns: list[str]
                 "SoftWare Version": "Software Version",
                 "Time Stamp": "Date & Time",
             })
+
             cfg = build_column_config_for_autowidth(shown)
             st.dataframe(shown, use_container_width=True, hide_index=True, column_config=cfg)
+
+            comb_excel = df_to_excel_bytes(
+                shown,
+                sheet_name="Combinations",
+                logo_path=logo_path,
+                title="PacketLight APS Disruption Time Results (Combinations)"
+            )
+            st.download_button(
+                "Download Combinations Results - Excel File",
+                data=comb_excel,
+                file_name="aps_combinations.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_combinations",
+            )
 
     with tab_full:
         st.subheader(f"Showing {len(display_df)} Records")
@@ -305,12 +371,27 @@ def render_records_section(display_df: pd.DataFrame, selected_columns: list[str]
         else:
             table_df = display_df[selected_columns].copy()
             col_cfg = build_column_config_for_autowidth(table_df)
+
             st.data_editor(
                 table_df,
                 use_container_width=True,
                 hide_index=False,
                 disabled=True,
                 column_config=col_cfg
+            )
+
+            rec_excel = df_to_excel_bytes(
+                table_df,
+                sheet_name="APS Results",
+                logo_path=logo_path,
+                title="PacketLight APS Disruption Time Results"
+            )
+            st.download_button(
+                "Download Filtered Results - Excel File",
+                data=rec_excel,
+                file_name="aps_results.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_records",
             )
 
 
@@ -471,42 +552,6 @@ def render_config_graph_wizard(df: pd.DataFrame):
         graph_dialog(base_graph_df, title_prefix)
 
 
-def build_excel_bytes(display_df: pd.DataFrame, selected_columns: list[str], logo_path: str) -> bytes:
-    export_df = display_df[selected_columns]
-    output = io.BytesIO()
-
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        sheet_name = "APS Results"
-        export_df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=5)
-
-        workbook = writer.book
-        worksheet = writer.sheets[sheet_name]
-
-        if os.path.exists(logo_path):
-            worksheet.insert_image("A1", logo_path, {"x_scale": 0.5, "y_scale": 0.5})
-
-        title_format = workbook.add_format({"bold": True, "font_size": 16, "align": "left", "valign": "vcenter"})
-        worksheet.write("A4", "PacketLight APS Disruption Time Results", title_format)
-
-        header_format = workbook.add_format({"bold": True, "align": "center", "valign": "vcenter", "bg_color": "#D9E1F2", "border": 1})
-        for col_num, value in enumerate(export_df.columns.values):
-            worksheet.write(5, col_num, value, header_format)
-
-        cell_format = workbook.add_format({"align": "center", "valign": "vcenter", "border": 1})
-        for row in range(len(export_df)):
-            for col in range(len(export_df.columns)):
-                worksheet.write(row + 6, col, export_df.iloc[row, col], cell_format)
-
-        for i, col in enumerate(export_df.columns):
-            max_len = max(export_df[col].astype(str).map(len).max(), len(col)) + 2
-            worksheet.set_column(i, i, max_len)
-
-        worksheet.freeze_panes(6, 0)
-
-    output.seek(0)
-    return output.getvalue()
-
-
 # =========================================
 # MAIN
 # =========================================
@@ -528,18 +573,8 @@ filtered_df = apply_filters(df, filters)
 display_df = filtered_df.rename(columns=DISPLAY_COLUMNS_MAP)
 selected_columns = [c for c in selected_columns if c in display_df.columns]
 
-# Records section FIRST (dynamic header per tab)
-render_records_section(display_df, selected_columns)
-
-# Export (based on current filtered display)
-excel_bytes = build_excel_bytes(display_df, selected_columns, logo_path)
-st.download_button(
-    "Download Filtered Results - Excel File",
-    data=excel_bytes,
-    file_name="aps_results.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-)
+# Records section FIRST (each tab has its own download button + different excel content)
+render_records_section(display_df, selected_columns, logo_path)
 
 # Graph section after table
 render_config_graph_wizard(df)
-
