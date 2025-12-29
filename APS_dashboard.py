@@ -209,36 +209,10 @@ def apply_filters(df: pd.DataFrame, f: dict) -> pd.DataFrame:
     return out
 
 
-def calc_distribution_old(series: pd.Series) -> dict:
-    """
-    Returns percent distribution of disruption time buckets:
-      <1ms, 1-20ms, >20ms (same style as your screenshot)
-    """
-    s = pd.to_numeric(series, errors="coerce").dropna()
-    total = int(len(s))
-    if total == 0:
-        return {
-            "Below 1mSec [%]": 0.0,
-            "1mSec Up to 20mSec [%]": 0.0,
-            "Above 20mSec [%]": 0.0,
-            "Total Number of Measurements": 0,
-        }
-
-    below_1 = (s < 1).sum()
-    up_to_20 = ((s >= 1) & (s <= 20)).sum()
-    above_20 = (s > 20).sum()
-
-    return {
-        "Below 1mSec [%]": (below_1 / total) * 100.0,
-        "1mSec Up to 20mSec [%]": (up_to_20 / total) * 100.0,
-        "Above 20mSec [%]": (above_20 / total) * 100.0,
-        "Total Number of Measurements": total,
-    }
-
 def calc_distribution(series: pd.Series) -> dict:
     """
-    Returns percent distribution of disruption time buckets:
-      <1ms, 1-20ms, >20ms (same style as your screenshot)
+    Buckets:
+      <=50ms, >50ms
     """
     s = pd.to_numeric(series, errors="coerce").dropna()
     total = int(len(s))
@@ -259,101 +233,37 @@ def calc_distribution(series: pd.Series) -> dict:
     }
 
 
-def build_summary_table_old(filtered_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Default (hidden full table) summary:
-    - group by unique "Time Stamp" + other config columns
-    - show distribution + total measurements
-    """
-    cols_present = [c for c in CONFIG_COLS if c in filtered_df.columns]
-    if not cols_present:
-        return pd.DataFrame()
-
-    # group size = number of measurements rows
-    grouped = filtered_df.groupby(cols_present, dropna=False)
-
-    rows = []
-    for key, g in grouped:
-        # key may be scalar if single column, normalize to tuple
-        if not isinstance(key, tuple):
-            key = (key,)
-        row = dict(zip(cols_present, key))
-
-        # distribution on W2P + P2W, and total rows
-        w2p_dist = calc_distribution(g.get("W2P Measurement"))
-        p2w_dist = calc_distribution(g.get("P2W Measurement"))
-
-        row.update({
-            "W2P Below 1ms [%]": w2p_dist["Below 1mSec [%]"],
-            "W2P 1-20ms [%]": w2p_dist["1mSec Up to 20mSec [%]"],
-            "W2P Above 20ms [%]": w2p_dist["Above 20mSec [%]"],
-
-            "P2W Below 1ms [%]": p2w_dist["Below 1mSec [%]"],
-            "P2W 1-20ms [%]": p2w_dist["1mSec Up to 20mSec [%]"],
-            "P2W Above 20ms [%]": p2w_dist["Above 20mSec [%]"],
-
-            "Total Number of Measurements": int(len(g)),
-        })
-        rows.append(row)
-
-    out = pd.DataFrame(rows)
-
-    # nicer rounding like excel
-    pct_cols = [c for c in out.columns if c.endswith("[%]")]
-    out[pct_cols] = out[pct_cols].round(4)
-
-    # Put timestamp last among config columns (optional)
-    if "Time Stamp" in out.columns:
-        # show newest first
-        out = out.sort_values("Time Stamp", ascending=False)
-
-    return out
-
-
 def build_summary_table(filtered_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Default (hidden full table) summary:
-    - group by unique "Time Stamp" + other config columns
-    - show distribution + total measurements
-    """
     cols_present = [c for c in CONFIG_COLS if c in filtered_df.columns]
     if not cols_present:
         return pd.DataFrame()
 
-    # group size = number of measurements rows
     grouped = filtered_df.groupby(cols_present, dropna=False)
 
     rows = []
     for key, g in grouped:
-        # key may be scalar if single column, normalize to tuple
         if not isinstance(key, tuple):
             key = (key,)
         row = dict(zip(cols_present, key))
 
-        # distribution on W2P + P2W, and total rows
         w2p_dist = calc_distribution(g.get("W2P Measurement"))
         p2w_dist = calc_distribution(g.get("P2W Measurement"))
 
         row.update({
             "W2P Below/Equal 50ms [%]": w2p_dist["Below/Equal 50mSec [%]"],
             "W2P Above 50ms [%]": w2p_dist["Above 50mSec [%]"],
-
             "P2W Below/Equal 50ms [%]": p2w_dist["Below/Equal 50mSec [%]"],
             "P2W Above 50ms [%]": p2w_dist["Above 50mSec [%]"],
-
             "Total Number of Measurements": int(len(g)),
         })
         rows.append(row)
 
     out = pd.DataFrame(rows)
 
-    # nicer rounding like excel
     pct_cols = [c for c in out.columns if c.endswith("[%]")]
     out[pct_cols] = out[pct_cols].round(4)
 
-    # Put timestamp last among config columns (optional)
     if "Time Stamp" in out.columns:
-        # show newest first
         out = out.sort_values("Time Stamp", ascending=False)
 
     return out
@@ -361,41 +271,40 @@ def build_summary_table(filtered_df: pd.DataFrame) -> pd.DataFrame:
 
 def render_records_section(display_df: pd.DataFrame, selected_columns: list[str]):
     """
-    1) Show summary table by unique configuration (based on unique timestamp/config)
-    2) Full table hidden by default under a tab.
+    - Two tabs:
+        1) Summary by Configuration -> title shows combinations count
+        2) Full table -> title shows records count
     """
     st.divider()
-    st.subheader(f"Showing {len(display_df)} Records")
+
+    # Build summary count (unique combinations based on summary grouping)
+    original_names_df = display_df.rename(columns={v: k for k, v in DISPLAY_COLUMNS_MAP.items()})
+    summary_df = build_summary_table(original_names_df)
+    combinations_count = int(len(summary_df))
 
     tab_summary, tab_full = st.tabs(["Summary by Configuration", "Show Measurements Full Table"])
 
-    # ---------- Summary ----------
     with tab_summary:
-        summary_df = build_summary_table(display_df.rename(columns={v: k for k, v in DISPLAY_COLUMNS_MAP.items()}))
-        # NOTE: build_summary_table expects original names, so we convert back above
+        st.subheader(f"Showing {combinations_count} Combinations")
 
         if summary_df.empty:
             st.info("No summary available (missing configuration columns).")
         else:
-            # Rename for display
             shown = summary_df.rename(columns={
                 "SoftWare Version": "Software Version",
                 "Time Stamp": "Date & Time",
             })
-
-            # Auto width config
             cfg = build_column_config_for_autowidth(shown)
-
             st.dataframe(shown, use_container_width=True, hide_index=True, column_config=cfg)
 
-    # ---------- Full table (hidden by default) ----------
     with tab_full:
+        st.subheader(f"Showing {len(display_df)} Records")
+
         if len(display_df) == 0:
             st.info("No records to display.")
         else:
             table_df = display_df[selected_columns].copy()
             col_cfg = build_column_config_for_autowidth(table_df)
-
             st.data_editor(
                 table_df,
                 use_container_width=True,
@@ -406,12 +315,6 @@ def render_records_section(display_df: pd.DataFrame, selected_columns: list[str]
 
 
 def render_config_graph_wizard(df: pd.DataFrame):
-    """
-    Wizard-like graph generation:
-    - User must select a value from each filter ONLY if it has options.
-    - When all required selections are done -> show "Generate Graph" button.
-    - Clicking opens a modal dialog with TWO graphs (W2P and P2W).
-    """
     st.divider()
     st.subheader("📈 Configuration Graph (Generate)")
 
@@ -625,10 +528,10 @@ filtered_df = apply_filters(df, filters)
 display_df = filtered_df.rename(columns=DISPLAY_COLUMNS_MAP)
 selected_columns = [c for c in selected_columns if c in display_df.columns]
 
-# 1) Records section FIRST (summary + hidden full table tab)
+# Records section FIRST (dynamic header per tab)
 render_records_section(display_df, selected_columns)
 
-# 2) Graph section after table
+# Graph section after table
 render_config_graph_wizard(df)
 
 # Export (based on current filtered display)
