@@ -34,6 +34,19 @@ DISPLAY_COLUMNS_MAP = {
     "P2W Measurement": "P2W (ms)",
 }
 
+# The columns that define a "configuration" for summary
+CONFIG_COLS = [
+    "Product Name",
+    "Protection Type",
+    "SoftWare Version",
+    "System Mode",
+    "Uplink Service Type",
+    "Client Service Type",
+    "Transceiver PN",
+    "Transceiver FW",
+    "Time Stamp",
+]
+
 # =========================================
 # HELPERS
 # =========================================
@@ -41,7 +54,7 @@ DISPLAY_COLUMNS_MAP = {
 def load_data() -> pd.DataFrame:
     df = pd.read_sql(f'SELECT rowid as _rowid_, * FROM "{MAIN_TABLE}"', engine)
 
-    # Normalize timestamp column for consistent dropdown + filtering
+    # Normalize timestamp column
     if "Time Stamp" in df.columns:
         parsed = pd.to_datetime(df["Time Stamp"], errors="coerce", dayfirst=True)
         df["Time Stamp"] = parsed.dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -52,7 +65,7 @@ def load_data() -> pd.DataFrame:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # Ensure "Number" is numeric
+    # Ensure "Number" numeric
     if "Number" in df.columns:
         df["Number"] = pd.to_numeric(df["Number"], errors="coerce")
 
@@ -88,9 +101,7 @@ def build_column_config_for_autowidth(df: pd.DataFrame, min_px=90, max_px=380, p
 
 def sidebar_filters(df: pd.DataFrame):
     """
-    Builds the sidebar UI and returns:
-      - filters dict (raw selections)
-      - selected_columns (renamed columns selected for table)
+    Sidebar filters (interdependent options) + columns-to-display (table).
     """
     with st.sidebar:
         st.subheader("Contact: Yuval Dahan")
@@ -137,9 +148,8 @@ def sidebar_filters(df: pd.DataFrame):
         p2w_filter_type = st.radio("Filter P2W:", ["Show All", "Above", "Below"], horizontal=True, key="p2w_radio")
         p2w_threshold = st.number_input("P2W Threshold", min_value=0.0, step=0.1, key="p2w_thr")
 
-        st.header("🧩 Columns to Display")
-        st.caption("Toggle columns on/off to display in the table:")
-
+        st.header("🧩 Columns to Display (Full table)")
+        st.caption("Toggle columns on/off for the FULL table view:")
         display_df_preview = df.rename(columns=DISPLAY_COLUMNS_MAP)
         checkbox_columns = {col: st.checkbox(col, value=True) for col in display_df_preview.columns}
         selected_columns = [col for col, show in checkbox_columns.items() if show]
@@ -199,6 +209,130 @@ def apply_filters(df: pd.DataFrame, f: dict) -> pd.DataFrame:
     return out
 
 
+def calc_distribution(series: pd.Series) -> dict:
+    """
+    Returns percent distribution of disruption time buckets:
+      <1ms, 1-20ms, >20ms (same style as your screenshot)
+    """
+    s = pd.to_numeric(series, errors="coerce").dropna()
+    total = int(len(s))
+    if total == 0:
+        return {
+            "Below 1mSec [%]": 0.0,
+            "1mSec Up to 20mSec [%]": 0.0,
+            "Above 20mSec [%]": 0.0,
+            "Total Number of Measurements": 0,
+        }
+
+    below_1 = (s < 1).sum()
+    up_to_20 = ((s >= 1) & (s <= 20)).sum()
+    above_20 = (s > 20).sum()
+
+    return {
+        "Below 1mSec [%]": (below_1 / total) * 100.0,
+        "1mSec Up to 20mSec [%]": (up_to_20 / total) * 100.0,
+        "Above 20mSec [%]": (above_20 / total) * 100.0,
+        "Total Number of Measurements": total,
+    }
+
+
+def build_summary_table(filtered_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Default (hidden full table) summary:
+    - group by unique "Time Stamp" + other config columns
+    - show distribution + total measurements
+    """
+    cols_present = [c for c in CONFIG_COLS if c in filtered_df.columns]
+    if not cols_present:
+        return pd.DataFrame()
+
+    # group size = number of measurements rows
+    grouped = filtered_df.groupby(cols_present, dropna=False)
+
+    rows = []
+    for key, g in grouped:
+        # key may be scalar if single column, normalize to tuple
+        if not isinstance(key, tuple):
+            key = (key,)
+        row = dict(zip(cols_present, key))
+
+        # distribution on W2P + P2W, and total rows
+        w2p_dist = calc_distribution(g.get("W2P Measurement"))
+        p2w_dist = calc_distribution(g.get("P2W Measurement"))
+
+        row.update({
+            "W2P Below 1ms [%]": w2p_dist["Below 1mSec [%]"],
+            "W2P 1-20ms [%]": w2p_dist["1mSec Up to 20mSec [%]"],
+            "W2P Above 20ms [%]": w2p_dist["Above 20mSec [%]"],
+
+            "P2W Below 1ms [%]": p2w_dist["Below 1mSec [%]"],
+            "P2W 1-20ms [%]": p2w_dist["1mSec Up to 20mSec [%]"],
+            "P2W Above 20ms [%]": p2w_dist["Above 20mSec [%]"],
+
+            "Total Number of Measurements": int(len(g)),
+        })
+        rows.append(row)
+
+    out = pd.DataFrame(rows)
+
+    # nicer rounding like excel
+    pct_cols = [c for c in out.columns if c.endswith("[%]")]
+    out[pct_cols] = out[pct_cols].round(4)
+
+    # Put timestamp last among config columns (optional)
+    if "Time Stamp" in out.columns:
+        # show newest first
+        out = out.sort_values("Time Stamp", ascending=False)
+
+    return out
+
+
+def render_records_section(display_df: pd.DataFrame, selected_columns: list[str]):
+    """
+    1) Show summary table by unique configuration (based on unique timestamp/config)
+    2) Full table hidden by default under a tab.
+    """
+    st.divider()
+    st.subheader(f"Showing {len(display_df)} Records")
+
+    tab_summary, tab_full = st.tabs(["Summary by Configuration", "Show Measurements Full Table"])
+
+    # ---------- Summary ----------
+    with tab_summary:
+        summary_df = build_summary_table(display_df.rename(columns={v: k for k, v in DISPLAY_COLUMNS_MAP.items()}))
+        # NOTE: build_summary_table expects original names, so we convert back above
+
+        if summary_df.empty:
+            st.info("No summary available (missing configuration columns).")
+        else:
+            # Rename for display
+            shown = summary_df.rename(columns={
+                "SoftWare Version": "Software Version",
+                "Time Stamp": "Date & Time",
+            })
+
+            # Auto width config
+            cfg = build_column_config_for_autowidth(shown)
+
+            st.dataframe(shown, use_container_width=True, hide_index=True, column_config=cfg)
+
+    # ---------- Full table (hidden by default) ----------
+    with tab_full:
+        if len(display_df) == 0:
+            st.info("No records to display.")
+        else:
+            table_df = display_df[selected_columns].copy()
+            col_cfg = build_column_config_for_autowidth(table_df)
+
+            st.data_editor(
+                table_df,
+                use_container_width=True,
+                hide_index=False,
+                disabled=True,
+                column_config=col_cfg
+            )
+
+
 def render_config_graph_wizard(df: pd.DataFrame):
     """
     Wizard-like graph generation:
@@ -216,7 +350,6 @@ def render_config_graph_wizard(df: pd.DataFrame):
             return []
         return sorted([x for x in base_graph_df[col].dropna().unique()])
 
-    # ---- Wizard selects (each selection narrows the next) ----
     product_opts = _opts("Product Name")
     g_product = st.selectbox(
         "Product Name" + (" (required)" if product_opts else " (no data)"),
@@ -257,13 +390,11 @@ def render_config_graph_wizard(df: pd.DataFrame):
     if g_ts:
         base_graph_df = base_graph_df[base_graph_df["Time Stamp"] == g_ts]
 
-    # Optional style controls
     with st.expander("Graph options"):
         show_markers = st.checkbox("Show markers", value=False, key="g_markers")
         use_log_y = st.checkbox("Log scale (Y)", value=False, key="g_logy")
         y_pad_pct = st.slider("Y padding (%)", min_value=0, max_value=30, value=5, step=1, key="g_pad")
 
-    # Required only if options exist
     requirements = {
         "Product Name": (len(product_opts) == 0) or bool(g_product),
         "Protection Type": (len(protection_opts) == 0) or bool(g_protection),
@@ -277,7 +408,7 @@ def render_config_graph_wizard(df: pd.DataFrame):
         st.info("Select values for: " + ", ".join(missing))
         return
 
-    st.success("Ready. Click **Generate Graph**.")
+    st.success("Click **Generate Graph**")
     generate = st.button("📊 Generate Graph", key="g_generate")
 
     @st.dialog("Generated Graphs", width="large")
@@ -306,7 +437,7 @@ def render_config_graph_wizard(df: pd.DataFrame):
         y_range = [y_min - pad, y_max + pad]
         mode = "lines+markers" if show_markers else "lines"
 
-        # ---- Graph 1: W2P only ----
+        # W2P graph
         fig1 = go.Figure()
         fig1.add_trace(go.Scatter(
             x=plot_df["Number"], y=w2p, mode=mode, name="W2P (ms)",
@@ -324,16 +455,14 @@ def render_config_graph_wizard(df: pd.DataFrame):
             margin=dict(l=60, r=30, t=80, b=80),
         )
         fig1.update_xaxes(rangeslider_visible=False)
-        if use_log_y:
-            fig1.update_yaxes(type="log")
-        else:
+        fig1.update_yaxes(type="log" if use_log_y else "linear")
+        if not use_log_y:
             fig1.update_yaxes(range=y_range)
-
         st.plotly_chart(fig1, use_container_width=True)
 
         st.divider()
 
-        # ---- Graph 2: P2W only ----
+        # P2W graph
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(
             x=plot_df["Number"], y=p2w, mode=mode, name="P2W (ms)",
@@ -351,11 +480,9 @@ def render_config_graph_wizard(df: pd.DataFrame):
             margin=dict(l=60, r=30, t=80, b=80),
         )
         fig2.update_xaxes(rangeslider_visible=False)
-        if use_log_y:
-            fig2.update_yaxes(type="log")
-        else:
+        fig2.update_yaxes(type="log" if use_log_y else "linear")
+        if not use_log_y:
             fig2.update_yaxes(range=y_range)
-
         st.plotly_chart(fig2, use_container_width=True)
 
         with st.expander("Show samples used"):
@@ -367,22 +494,6 @@ def render_config_graph_wizard(df: pd.DataFrame):
         if details:
             title_prefix += f"<br><sup>{details}</sup>"
         graph_dialog(base_graph_df, title_prefix)
-
-
-def render_results_table(display_df: pd.DataFrame, selected_columns: list[str]):
-    st.divider()
-    st.subheader(f"Showing {len(display_df)} Records")
-
-    table_df = display_df[selected_columns].copy()
-    col_cfg = build_column_config_for_autowidth(table_df)
-
-    st.data_editor(
-        table_df,
-        use_container_width=True,
-        hide_index=False,
-        disabled=True,
-        column_config=col_cfg
-    )
 
 
 def build_excel_bytes(display_df: pd.DataFrame, selected_columns: list[str], logo_path: str) -> bytes:
@@ -420,6 +531,7 @@ def build_excel_bytes(display_df: pd.DataFrame, selected_columns: list[str], log
     output.seek(0)
     return output.getvalue()
 
+
 # =========================================
 # MAIN
 # =========================================
@@ -437,16 +549,17 @@ st.subheader("(W2P / P2W Disruption Time Measurements)")
 filters, selected_columns = sidebar_filters(df)
 filtered_df = apply_filters(df, filters)
 
+# Rename for display
 display_df = filtered_df.rename(columns=DISPLAY_COLUMNS_MAP)
 selected_columns = [c for c in selected_columns if c in display_df.columns]
 
-# Graph (wizard + button + modal with two graphs)
+# 1) Records section FIRST (summary + hidden full table tab)
+render_records_section(display_df, selected_columns)
+
+# 2) Graph section after table
 render_config_graph_wizard(df)
 
-# Table
-render_results_table(display_df, selected_columns)
-
-# Export
+# Export (based on current filtered display)
 excel_bytes = build_excel_bytes(display_df, selected_columns, logo_path)
 st.download_button(
     "Download Filtered Results - Excel File",
