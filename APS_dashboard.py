@@ -164,7 +164,7 @@ def sidebar_filters(df: pd.DataFrame):
         "selected_transceiver_pn": selected_transceiver_pn,
         "selected_transceiver_fw": selected_transceiver_fw,
         "selected_timestamp": selected_timestamp,
-        "number_list": number_list,
+        # "number_list": number_list,
         "w2p_filter_type": w2p_filter_type,
         "w2p_threshold": w2p_threshold,
         "p2w_filter_type": p2w_filter_type,
