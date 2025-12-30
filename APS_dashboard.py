@@ -103,9 +103,6 @@ def qp_set_float(key: str, value: float, default: float = 0.0) -> None:
 
 # =========================================
 # Reset mechanism (Streamlit 1.40.1 safe)
-# - Callback only sets flag
-# - Reset executed at top before widgets
-# - reset_token forces widgets to remount (clears old UI state)
 # =========================================
 if "reset_token" not in st.session_state:
     st.session_state["reset_token"] = 0
@@ -122,7 +119,6 @@ if st.session_state.get("_do_reset", False):
 reset_token = st.session_state["reset_token"]
 
 def K(name: str) -> str:
-    # stable between reruns; changes only on Reset
     return f"{name}__rt{reset_token}"
 
 # =========================================
@@ -411,6 +407,50 @@ def build_summary_table(filtered_df_original_names: pd.DataFrame) -> pd.DataFram
     return out
 
 
+# =========================================
+# Summary highlighting (YOUR RULES)
+# - If Below > Above => color Below cell GREEN
+# - Else => color Above cell RED
+# =========================================
+def style_summary_table(df: pd.DataFrame) -> pd.io.formats.style.Styler:
+    w2p_b = "W2P Below/Equal 50ms [%]"
+    w2p_a = "W2P Above 50ms [%]"
+    p2w_b = "P2W Below/Equal 50ms [%]"
+    p2w_a = "P2W Above 50ms [%]"
+
+    def _apply(row: pd.Series):
+        styles = [""] * len(row.index)
+        idx = {c: i for i, c in enumerate(row.index)}
+
+        # W2P: green Below if Below > Above else red Above
+        if w2p_b in idx and w2p_a in idx:
+            try:
+                vb = float(row[w2p_b])
+                va = float(row[w2p_a])
+                if vb > va:
+                    styles[idx[w2p_b]] = "background-color:#C6EFCE; color:#006100; font-weight:700;"
+                else:
+                    styles[idx[w2p_a]] = "background-color:#FFC7CE; color:#9C0006; font-weight:700;"
+            except Exception:
+                pass
+
+        # P2W: green Below if Below > Above else red Above
+        if p2w_b in idx and p2w_a in idx:
+            try:
+                vb = float(row[p2w_b])
+                va = float(row[p2w_a])
+                if vb > va:
+                    styles[idx[p2w_b]] = "background-color:#C6EFCE; color:#006100; font-weight:700;"
+                else:
+                    styles[idx[p2w_a]] = "background-color:#FFC7CE; color:#9C0006; font-weight:700;"
+            except Exception:
+                pass
+
+        return styles
+
+    return df.style.apply(_apply, axis=1).format(precision=4)
+
+
 def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | None = None,
                       title: str | None = None) -> bytes:
     output = io.BytesIO()
@@ -646,8 +686,14 @@ def render_records_section(
                 "SoftWare Version": "Software Version",
                 "Time Stamp": "Date & Time",
             })
-            cfg = build_column_config_for_autowidth(shown)
-            st.dataframe(shown, use_container_width=True, hide_index=True, column_config=cfg)
+
+            # ✅ IMPORTANT CHANGE:
+            # Use Styler so the cells get colored (your rules: 79 red, 93 red, etc.)
+            st.dataframe(
+                style_summary_table(shown),
+                use_container_width=True,
+                hide_index=True,
+            )
 
             comb_excel = df_to_excel_bytes(
                 shown,
