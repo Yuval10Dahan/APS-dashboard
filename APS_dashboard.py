@@ -412,7 +412,7 @@ def build_summary_table(filtered_df_original_names: pd.DataFrame) -> pd.DataFram
 # - If Below > Above => color Below cell GREEN
 # - Else => color Above cell RED
 # =========================================
-def style_summary_table(df: pd.DataFrame) -> pd.io.formats.style.Styler:
+def style_summary_table(df: pd.DataFrame):
     w2p_b = "W2P Below/Equal 50ms [%]"
     w2p_a = "W2P Above 50ms [%]"
     p2w_b = "P2W Below/Equal 50ms [%]"
