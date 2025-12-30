@@ -340,8 +340,12 @@ def render_graph_by_combination_id(
     Graph is based on BASE-FILTERED dataset (no W2P/P2W thresholds),
     because the combination itself is defined by base filters.
 
-    Graph display options (as requested):
+    Graph display options:
       - Y-axis scale: Auto / Log
+
+    UI change requested:
+      - Make the "Enter Combination ID" input small (roughly label-sized),
+        not a huge full-width input.
     """
     st.divider()
     st.subheader("📈 Generate Graph")
@@ -353,8 +357,8 @@ def render_graph_by_combination_id(
     max_id = int(summary_df_original[id_col].max()) if id_col in summary_df_original.columns else 1
     max_id = max(1, max_id)
 
-    # Short input row
-    c1, c2 = st.columns([1.2, 6])
+    # ---- Compact input row (label + small input + spacer) ----
+    c1, c2, c3 = st.columns([1.6, 1.0, 8.0])  # c2 is intentionally small
     with c1:
         st.markdown("**Enter Combination ID**")
     with c2:
@@ -367,6 +371,8 @@ def render_graph_by_combination_id(
             key="comb_id_input",
             label_visibility="collapsed",
         )
+    with c3:
+        st.empty()
 
     with st.expander("Graph display options", expanded=True):
         scale_mode = st.radio("Y-axis scale", ["Auto", "Log"], horizontal=True, key="y_scale_mode")
