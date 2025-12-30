@@ -47,6 +47,9 @@ CONFIG_COLS = [
     "Time Stamp",
 ]
 
+# Auto->Log heuristic (since we removed the slider option)
+AUTO_LOG_RATIO_THRESHOLD = 200  # max/median >= this => use log
+
 # =========================================
 # HELPERS
 # =========================================
@@ -336,10 +339,9 @@ def render_graph_by_combination_id(
     """
     Graph is based on BASE-FILTERED dataset (no W2P/P2W thresholds),
     because the combination itself is defined by base filters.
-    Includes "normalization" options for readability:
-      - Auto/Linear/Log Y scale
-      - Optional display cap (P99/P95) without changing raw data
-    Also: short input row (label width ~ "Enter Combination ID")
+
+    Graph display options (as requested):
+      - Y-axis scale: Auto / Log
     """
     st.divider()
     st.subheader("📈 Generate Graph")
@@ -367,16 +369,7 @@ def render_graph_by_combination_id(
         )
 
     with st.expander("Graph display options", expanded=True):
-        scale_mode = st.radio("Y-axis scale", ["Auto", "Linear", "Log"], horizontal=True, key="y_scale_mode")
-        cap_mode = st.radio("Normalize display", ["None", "Cap at P99", "Cap at P95"], horizontal=True, key="y_cap_mode")
-        auto_ratio_thr = st.slider(
-            "Auto→Log when max/median exceeds",
-            min_value=10,
-            max_value=1000,
-            value=200,
-            step=10,
-            key="auto_ratio_thr",
-        )
+        scale_mode = st.radio("Y-axis scale", ["Auto", "Log"], horizontal=True, key="y_scale_mode")
 
     if st.button("📊 Generate Graph", key="btn_graph_by_id"):
         if id_col not in summary_df_original.columns:
@@ -440,41 +433,19 @@ def render_graph_by_combination_id(
         # Scale decision
         if scale_mode == "Log":
             use_log = True
-        elif scale_mode == "Linear":
-            use_log = False
         else:
             med = float(y_all.median()) if len(y_all) else 0.0
             mx = float(y_all.max())
             ratio = (mx / med) if med and med > 0 else float("inf")
-            use_log = ratio >= auto_ratio_thr
+            use_log = ratio >= AUTO_LOG_RATIO_THRESHOLD
 
-        # Optional capping for display
-        def cap_series(s: pd.Series, cap_value: float) -> tuple[pd.Series, int]:
-            s2 = s.copy()
-            over = int((s2 > cap_value).sum())
-            return s2.clip(upper=cap_value), over
+        if use_log and scale_mode == "Auto":
+            st.info("Y-axis switched to **log scale** automatically (large max/median spread).")
 
+        # Linear y-range (only if not log)
         w2p_plot = w2p.copy()
         p2w_plot = p2w.copy()
-        cap_value = None
-        clipped_count = 0
 
-        if cap_mode != "None":
-            q = 0.99 if cap_mode == "Cap at P99" else 0.95
-            cap_value = float(y_all.quantile(q))
-            w2p_plot, c1 = cap_series(w2p_plot, cap_value)
-            p2w_plot, c2 = cap_series(p2w_plot, cap_value)
-            clipped_count = c1 + c2
-
-        if cap_value is not None:
-            st.info(
-                f"Display capped at {cap_mode.split()[-1]} = {cap_value:.3f} ms (for readability). "
-                f"Clipped points (W2P+P2W): {clipped_count}."
-            )
-        if use_log:
-            st.info("Y-axis uses **log scale** to keep outliers visible without flattening the rest.")
-
-        # Linear range
         y_min = float(pd.concat([w2p_plot, p2w_plot]).min())
         y_max = float(pd.concat([w2p_plot, p2w_plot]).max())
         pad = (y_max - y_min) * 0.05 if y_max > y_min else 1.0
