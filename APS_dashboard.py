@@ -138,15 +138,15 @@ def sidebar_filters(df: pd.DataFrame):
                 filtered_options_df = filtered_options_df[filtered_options_df["Time Stamp"].isin(selected_timestamp)]
 
         # ---- Measurements filters (records-only) ----
-        st.header("⏱️ W2P Filter (records only)")
+        st.header("⏱️ W2P Filter (Only Full table)")
         w2p_filter_type = st.radio("Filter W2P:", ["Show All", "Above", "Below"], horizontal=True, key="w2p_radio")
         w2p_threshold = st.number_input("W2P Threshold", min_value=0.0, step=0.1, key="w2p_thr")
 
-        st.header("⏱️ P2W Filter (records only)")
+        st.header("⏱️ P2W Filter (Only Full table)")
         p2w_filter_type = st.radio("Filter P2W:", ["Show All", "Above", "Below"], horizontal=True, key="p2w_radio")
         p2w_threshold = st.number_input("P2W Threshold", min_value=0.0, step=0.1, key="p2w_thr")
 
-        st.header("🧩 Columns to Display (Full table)")
+        st.header("🧩 Columns to Display (Only Full table)")
         st.caption("Toggle columns on/off for the FULL table view:")
         display_df_preview = df.rename(columns=DISPLAY_COLUMNS_MAP)
         checkbox_columns = {col: st.checkbox(col, value=True) for col in display_df_preview.columns}
@@ -248,8 +248,7 @@ def calc_distribution(series: pd.Series) -> dict:
 def build_summary_table(filtered_df_original_names: pd.DataFrame) -> pd.DataFrame:
     """
     filtered_df_original_names: must contain original DB column names.
-    NOTE: This MUST be built from the BASE-filtered dataframe (NO W2P/P2W thresholds),
-          per your requirement.
+    NOTE: This MUST be built from the BASE-filtered dataframe (NO W2P/P2W thresholds).
     """
     cols_present = [c for c in CONFIG_COLS if c in filtered_df_original_names.columns]
     if not cols_present:
@@ -337,23 +336,47 @@ def render_graph_by_combination_id(
     """
     Graph is based on BASE-FILTERED dataset (no W2P/P2W thresholds),
     because the combination itself is defined by base filters.
+    Includes "normalization" options for readability:
+      - Auto/Linear/Log Y scale
+      - Optional display cap (P99/P95) without changing raw data
+    Also: short input row (label width ~ "Enter Combination ID")
     """
     st.divider()
-    st.subheader("📈 Generate Graph by Combination ID")
+    st.subheader("📈 Generate Graph")
 
     if summary_df_original.empty:
         st.info("No combinations available to plot.")
         return
 
-    max_id = int(summary_df_original[id_col].max()) if id_col in summary_df_original.columns else 0
-    comb_id = st.number_input(
-        "Enter Combination ID",
-        min_value=1,
-        max_value=max(1, max_id),
-        value=1,
-        step=1,
-        key="comb_id_input",
-    )
+    max_id = int(summary_df_original[id_col].max()) if id_col in summary_df_original.columns else 1
+    max_id = max(1, max_id)
+
+    # Short input row
+    c1, c2 = st.columns([1.2, 6])
+    with c1:
+        st.markdown("**Enter Combination ID**")
+    with c2:
+        comb_id = st.number_input(
+            label="",
+            min_value=1,
+            max_value=max_id,
+            value=1,
+            step=1,
+            key="comb_id_input",
+            label_visibility="collapsed",
+        )
+
+    with st.expander("Graph display options", expanded=True):
+        scale_mode = st.radio("Y-axis scale", ["Auto", "Linear", "Log"], horizontal=True, key="y_scale_mode")
+        cap_mode = st.radio("Normalize display", ["None", "Cap at P99", "Cap at P95"], horizontal=True, key="y_cap_mode")
+        auto_ratio_thr = st.slider(
+            "Auto→Log when max/median exceeds",
+            min_value=10,
+            max_value=1000,
+            value=200,
+            step=10,
+            key="auto_ratio_thr",
+        )
 
     if st.button("📊 Generate Graph", key="btn_graph_by_id"):
         if id_col not in summary_df_original.columns:
@@ -391,6 +414,7 @@ def render_graph_by_combination_id(
             st.warning("No samples to plot for this Combination ID (after filters).")
             return
 
+        # Title
         details_parts = []
         for c in ["Product Name", "Protection Type", "SoftWare Version", "System Mode",
                   "Uplink Service Type", "Client Service Type", "Transceiver PN", "Transceiver FW", "Time Stamp"]:
@@ -404,49 +428,102 @@ def render_graph_by_combination_id(
         if details:
             title_prefix += f"<br><sup>{details}</sup>"
 
-        w2p = plot_df["W2P Measurement"]
-        p2w = plot_df["P2W Measurement"]
-        y_min = pd.concat([w2p, p2w]).min()
-        y_max = pd.concat([w2p, p2w]).max()
-        pad = (y_max - y_min) * 0.05 if y_max > y_min else 1
+        # Prepare y
+        w2p = pd.to_numeric(plot_df["W2P Measurement"], errors="coerce")
+        p2w = pd.to_numeric(plot_df["P2W Measurement"], errors="coerce")
+        y_all = pd.concat([w2p, p2w]).dropna()
+
+        if y_all.empty:
+            st.warning("No valid measurements to plot.")
+            return
+
+        # Scale decision
+        if scale_mode == "Log":
+            use_log = True
+        elif scale_mode == "Linear":
+            use_log = False
+        else:
+            med = float(y_all.median()) if len(y_all) else 0.0
+            mx = float(y_all.max())
+            ratio = (mx / med) if med and med > 0 else float("inf")
+            use_log = ratio >= auto_ratio_thr
+
+        # Optional capping for display
+        def cap_series(s: pd.Series, cap_value: float) -> tuple[pd.Series, int]:
+            s2 = s.copy()
+            over = int((s2 > cap_value).sum())
+            return s2.clip(upper=cap_value), over
+
+        w2p_plot = w2p.copy()
+        p2w_plot = p2w.copy()
+        cap_value = None
+        clipped_count = 0
+
+        if cap_mode != "None":
+            q = 0.99 if cap_mode == "Cap at P99" else 0.95
+            cap_value = float(y_all.quantile(q))
+            w2p_plot, c1 = cap_series(w2p_plot, cap_value)
+            p2w_plot, c2 = cap_series(p2w_plot, cap_value)
+            clipped_count = c1 + c2
+
+        if cap_value is not None:
+            st.info(
+                f"Display capped at {cap_mode.split()[-1]} = {cap_value:.3f} ms (for readability). "
+                f"Clipped points (W2P+P2W): {clipped_count}."
+            )
+        if use_log:
+            st.info("Y-axis uses **log scale** to keep outliers visible without flattening the rest.")
+
+        # Linear range
+        y_min = float(pd.concat([w2p_plot, p2w_plot]).min())
+        y_max = float(pd.concat([w2p_plot, p2w_plot]).max())
+        pad = (y_max - y_min) * 0.05 if y_max > y_min else 1.0
         y_range = [y_min - pad, y_max + pad]
 
+        # W2P plot
         fig1 = go.Figure()
         fig1.add_trace(go.Scatter(
-            x=plot_df["Number"], y=w2p, mode="lines", name="W2P (ms)",
+            x=plot_df["Number"], y=w2p_plot, mode="lines", name="W2P (ms)",
             line=dict(width=2),
             connectgaps=True
         ))
         fig1.update_layout(
             title=dict(text=f"{title_prefix}<br><sup>W2P</sup>", x=0.5),
             xaxis=dict(title="Cycle / Sample Number", tickangle=90, nticks=35, showgrid=False),
-            yaxis=dict(title="Disruption Time (mSec)", showgrid=True, range=y_range),
+            yaxis=dict(title="Disruption Time (mSec)", showgrid=True),
             plot_bgcolor="white", paper_bgcolor="white",
             hovermode="x unified",
             height=420,
             margin=dict(l=60, r=30, t=80, b=80),
         )
         fig1.update_xaxes(rangeslider_visible=False)
+        fig1.update_yaxes(type="log" if use_log else "linear")
+        if not use_log:
+            fig1.update_yaxes(range=y_range)
         st.plotly_chart(fig1, use_container_width=True)
 
         st.divider()
 
+        # P2W plot
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(
-            x=plot_df["Number"], y=p2w, mode="lines", name="P2W (ms)",
+            x=plot_df["Number"], y=p2w_plot, mode="lines", name="P2W (ms)",
             line=dict(width=2),
             connectgaps=True
         ))
         fig2.update_layout(
             title=dict(text=f"{title_prefix}<br><sup>P2W</sup>", x=0.5),
             xaxis=dict(title="Cycle / Sample Number", tickangle=90, nticks=35, showgrid=False),
-            yaxis=dict(title="Disruption Time (mSec)", showgrid=True, range=y_range),
+            yaxis=dict(title="Disruption Time (mSec)", showgrid=True),
             plot_bgcolor="white", paper_bgcolor="white",
             hovermode="x unified",
             height=420,
             margin=dict(l=60, r=30, t=80, b=80),
         )
         fig2.update_xaxes(rangeslider_visible=False)
+        fig2.update_yaxes(type="log" if use_log else "linear")
+        if not use_log:
+            fig2.update_yaxes(range=y_range)
         st.plotly_chart(fig2, use_container_width=True)
 
         with st.expander("Show samples used"):
@@ -465,7 +542,6 @@ def render_records_section(
     """
     st.divider()
 
-    # Summary: needs original names from BASE-filtered display df
     base_original_df = summary_display_df.rename(columns={v: k for k, v in DISPLAY_COLUMNS_MAP.items()})
     summary_df = build_summary_table(base_original_df)
 
@@ -535,7 +611,6 @@ def render_records_section(
                 key="dl_records",
             )
 
-    # Return BASE-original + summary-original (with Combination ID) for graph-by-id
     return base_original_df, summary_df
 
 
