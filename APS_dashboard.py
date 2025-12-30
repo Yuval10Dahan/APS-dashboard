@@ -34,7 +34,6 @@ DISPLAY_COLUMNS_MAP = {
     "P2W Measurement": "P2W (ms)",
 }
 
-# The columns that define a "configuration" (combinations)
 CONFIG_COLS = [
     "Product Name",
     "Protection Type",
@@ -47,8 +46,28 @@ CONFIG_COLS = [
     "Time Stamp",
 ]
 
-# Auto->Log heuristic (since we removed the slider option)
 AUTO_LOG_RATIO_THRESHOLD = 200  # max/median >= this => use log
+
+# ======================================================================================
+# Reset mechanism (Streamlit 1.40.1): tokenized keys to force widget remount
+# ======================================================================================
+if "reset_token" not in st.session_state:
+    st.session_state["reset_token"] = 0
+
+reset_token = st.session_state["reset_token"]
+
+def K(name: str) -> str:
+    return f"{name}__rt{reset_token}"
+
+def _mark_reset():
+    st.session_state["_do_reset"] = True
+
+# Execute reset BEFORE widgets are created
+if st.session_state.get("_do_reset", False):
+    st.session_state["_do_reset"] = False
+    st.query_params.clear()               # (optional; you don't use query params here, but keeps URL clean)
+    st.session_state["reset_token"] += 1  # remount all widgets
+    st.rerun()
 
 # =========================================
 # HELPERS
@@ -110,49 +129,71 @@ def sidebar_filters(df: pd.DataFrame):
     """
     with st.sidebar:
         st.subheader("Contact: Yuval Dahan")
+
+        # ✅ Reset button (same behavior as your Latency dashboard)
+        st.button("🔄 Reset Button", on_click=_mark_reset, use_container_width=True)
+
         st.header("🔍 Filters")
 
         filtered_options_df = df.copy()
 
-        def multisel(col, label):
+        def multisel(col, label, key_name):
             nonlocal filtered_options_df
             selected = []
             if col in filtered_options_df.columns:
-                selected = st.multiselect(label, sorted(filtered_options_df[col].dropna().unique()))
+                selected = st.multiselect(
+                    label,
+                    sorted(filtered_options_df[col].dropna().unique()),
+                    key=K(key_name)
+                )
                 if selected:
                     filtered_options_df = filtered_options_df[filtered_options_df[col].isin(selected)]
             return selected
 
         # ---- Base filters (shared) ----
-        selected_product = multisel("Product Name", "Product Name")
-        selected_protection = multisel("Protection Type", "Protection Type")
-        selected_sw = multisel("SoftWare Version", "Software Version")
-        selected_mode = multisel("System Mode", "System Mode")
-        selected_uplink = multisel("Uplink Service Type", "Uplink Service Type")
-        selected_client = multisel("Client Service Type", "Client Service Type")
-        selected_transceiver_pn = multisel("Transceiver PN", "Transceiver PN")
-        selected_transceiver_fw = multisel("Transceiver FW", "Transceiver FW")
+        selected_product = multisel("Product Name", "Product Name", "f_product")
+        selected_protection = multisel("Protection Type", "Protection Type", "f_protection")
+        selected_sw = multisel("SoftWare Version", "Software Version", "f_sw")
+        selected_mode = multisel("System Mode", "System Mode", "f_mode")
+        selected_uplink = multisel("Uplink Service Type", "Uplink Service Type", "f_uplink")
+        selected_client = multisel("Client Service Type", "Client Service Type", "f_client")
+        selected_transceiver_pn = multisel("Transceiver PN", "Transceiver PN", "f_tr_pn")
+        selected_transceiver_fw = multisel("Transceiver FW", "Transceiver FW", "f_tr_fw")
 
         selected_timestamp = []
         if "Time Stamp" in filtered_options_df.columns:
             ts_options = sorted(filtered_options_df["Time Stamp"].dropna().unique(), reverse=True)
-            selected_timestamp = st.multiselect("Date & Time", ts_options)
+            selected_timestamp = st.multiselect("Date & Time", ts_options, key=K("f_ts"))
             if selected_timestamp:
                 filtered_options_df = filtered_options_df[filtered_options_df["Time Stamp"].isin(selected_timestamp)]
 
         # ---- Measurements filters (records-only) ----
         st.header("⏱️ W2P Filter (Only Full table)")
-        w2p_filter_type = st.radio("Filter W2P:", ["Show All", "Above", "Below"], horizontal=True, key="w2p_radio")
-        w2p_threshold = st.number_input("W2P Threshold", min_value=0.0, step=0.1, key="w2p_thr")
+        w2p_filter_type = st.radio(
+            "Filter W2P:",
+            ["Show All", "Above", "Below"],
+            horizontal=True,
+            key=K("w2p_radio")
+        )
+        w2p_threshold = st.number_input("W2P Threshold", min_value=0.0, step=0.1, key=K("w2p_thr"))
 
         st.header("⏱️ P2W Filter (Only Full table)")
-        p2w_filter_type = st.radio("Filter P2W:", ["Show All", "Above", "Below"], horizontal=True, key="p2w_radio")
-        p2w_threshold = st.number_input("P2W Threshold", min_value=0.0, step=0.1, key="p2w_thr")
+        p2w_filter_type = st.radio(
+            "Filter P2W:",
+            ["Show All", "Above", "Below"],
+            horizontal=True,
+            key=K("p2w_radio")
+        )
+        p2w_threshold = st.number_input("P2W Threshold", min_value=0.0, step=0.1, key=K("p2w_thr"))
 
         st.header("🧩 Columns to Display (Only Full table)")
         st.caption("Toggle columns on/off for the FULL table view:")
         display_df_preview = df.rename(columns=DISPLAY_COLUMNS_MAP)
-        checkbox_columns = {col: st.checkbox(col, value=True) for col in display_df_preview.columns}
+
+        checkbox_columns = {}
+        for col in display_df_preview.columns:
+            checkbox_columns[col] = st.checkbox(col, value=True, key=K(f"col_{col}"))
+
         selected_columns = [col for col, show in checkbox_columns.items() if show]
 
     base_filters = {
@@ -178,10 +219,6 @@ def sidebar_filters(df: pd.DataFrame):
 
 
 def apply_base_filters(df: pd.DataFrame, f: dict) -> pd.DataFrame:
-    """
-    Applies ONLY the "shared" filters (no W2P/P2W thresholds here).
-    Used for BOTH Summary and Full table.
-    """
     out = df.copy()
 
     def apply_in(col, values):
@@ -203,10 +240,6 @@ def apply_base_filters(df: pd.DataFrame, f: dict) -> pd.DataFrame:
 
 
 def apply_measurement_filters_records_only(df: pd.DataFrame, mf: dict) -> pd.DataFrame:
-    """
-    Applies ONLY W2P/P2W Above/Below thresholds.
-    This should apply ONLY to the Full table.
-    """
     out = df.copy()
 
     if "W2P Measurement" in out.columns:
@@ -225,10 +258,6 @@ def apply_measurement_filters_records_only(df: pd.DataFrame, mf: dict) -> pd.Dat
 
 
 def calc_distribution(series: pd.Series) -> dict:
-    """
-    Buckets:
-      <=50ms, >50ms
-    """
     s = pd.to_numeric(series, errors="coerce").dropna()
     total = int(len(s))
     if total == 0:
@@ -249,10 +278,6 @@ def calc_distribution(series: pd.Series) -> dict:
 
 
 def build_summary_table(filtered_df_original_names: pd.DataFrame) -> pd.DataFrame:
-    """
-    filtered_df_original_names: must contain original DB column names.
-    NOTE: This MUST be built from the BASE-filtered dataframe (NO W2P/P2W thresholds).
-    """
     cols_present = [c for c in CONFIG_COLS if c in filtered_df_original_names.columns]
     if not cols_present:
         return pd.DataFrame()
@@ -336,17 +361,6 @@ def render_graph_by_combination_id(
     summary_df_original: pd.DataFrame,
     id_col: str = "Combination ID",
 ):
-    """
-    Graph is based on BASE-FILTERED dataset (no W2P/P2W thresholds),
-    because the combination itself is defined by base filters.
-
-    Graph display options:
-      - Y-axis scale: Auto / Log
-
-    UI change requested:
-      - Make the "Enter Combination ID" input small (roughly label-sized),
-        not a huge full-width input.
-    """
     st.divider()
     st.subheader("📈 Generate Graph")
 
@@ -357,8 +371,7 @@ def render_graph_by_combination_id(
     max_id = int(summary_df_original[id_col].max()) if id_col in summary_df_original.columns else 1
     max_id = max(1, max_id)
 
-    # ---- Compact input row (label + small input + spacer) ----
-    c1, c2, c3 = st.columns([1.6, 1.0, 8.0])  # c2 is intentionally small
+    c1, c2, c3 = st.columns([1.6, 1.0, 8.0])
     with c1:
         st.markdown("**Enter Combination ID**")
     with c2:
@@ -368,18 +381,16 @@ def render_graph_by_combination_id(
             max_value=max_id,
             value=1,
             step=1,
-            key="comb_id_input",
+            key=K("comb_id_input"),
             label_visibility="collapsed",
         )
     with c3:
         st.empty()
 
-    # with st.expander("Graph display options", expanded=True):
-    #     scale_mode = st.radio("Y-axis scale", ["Auto", "Log"], horizontal=True, key="y_scale_mode")
     with st.popover("Graph display options"):
-        scale_mode = st.radio("Y-axis scale", ["Auto", "Log"], horizontal=True, key="y_scale_mode")
+        scale_mode = st.radio("Y-axis scale", ["Auto", "Log"], horizontal=True, key=K("y_scale_mode"))
 
-    if st.button("📊 Generate Graph", key="btn_graph_by_id"):
+    if st.button("📊 Generate Graph", key=K("btn_graph_by_id")):
         if id_col not in summary_df_original.columns:
             st.error("Internal error: Summary table does not include Combination ID.")
             return
@@ -415,7 +426,6 @@ def render_graph_by_combination_id(
             st.warning("No samples to plot for this Combination ID (after filters).")
             return
 
-        # Title
         details_parts = []
         for c in ["Product Name", "Protection Type", "SoftWare Version", "System Mode",
                   "Uplink Service Type", "Client Service Type", "Transceiver PN", "Transceiver FW", "Time Stamp"]:
@@ -429,7 +439,6 @@ def render_graph_by_combination_id(
         if details:
             title_prefix += f"<br><sup>{details}</sup>"
 
-        # Prepare y
         w2p = pd.to_numeric(plot_df["W2P Measurement"], errors="coerce")
         p2w = pd.to_numeric(plot_df["P2W Measurement"], errors="coerce")
         y_all = pd.concat([w2p, p2w]).dropna()
@@ -438,7 +447,6 @@ def render_graph_by_combination_id(
             st.warning("No valid measurements to plot.")
             return
 
-        # Scale decision
         if scale_mode == "Log":
             use_log = True
         else:
@@ -450,7 +458,6 @@ def render_graph_by_combination_id(
         if use_log and scale_mode == "Auto":
             st.info("Y-axis switched to **log scale** automatically (large max/median spread).")
 
-        # Linear y-range (only if not log)
         w2p_plot = w2p.copy()
         p2w_plot = p2w.copy()
 
@@ -459,7 +466,6 @@ def render_graph_by_combination_id(
         pad = (y_max - y_min) * 0.05 if y_max > y_min else 1.0
         y_range = [y_min - pad, y_max + pad]
 
-        # W2P plot
         fig1 = go.Figure()
         fig1.add_trace(go.Scatter(
             x=plot_df["Number"], y=w2p_plot, mode="lines", name="W2P (ms)",
@@ -483,7 +489,6 @@ def render_graph_by_combination_id(
 
         st.divider()
 
-        # P2W plot
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(
             x=plot_df["Number"], y=p2w_plot, mode="lines", name="P2W (ms)",
@@ -510,15 +515,11 @@ def render_graph_by_combination_id(
 
 
 def render_records_section(
-    summary_display_df: pd.DataFrame,          # display names, BASE-filtered
-    records_display_df: pd.DataFrame,          # display names, BASE+measurement-filtered
+    summary_display_df: pd.DataFrame,
+    records_display_df: pd.DataFrame,
     selected_columns: list[str],
     logo_path: str
 ):
-    """
-    Summary tab uses BASE-filtered data ONLY (no W2P/P2W).
-    Full tab uses RECORDS-filtered data (W2P/P2W apply).
-    """
     st.divider()
 
     base_original_df = summary_display_df.rename(columns={v: k for k, v in DISPLAY_COLUMNS_MAP.items()})
@@ -556,7 +557,7 @@ def render_records_section(
                 data=comb_excel,
                 file_name="aps_combinations.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="dl_combinations",
+                key=K("dl_combinations"),
             )
 
     with tab_full:
@@ -587,7 +588,7 @@ def render_records_section(
                 data=rec_excel,
                 file_name="aps_results.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="dl_records",
+                key=K("dl_records"),
             )
 
     return base_original_df, summary_df
@@ -598,7 +599,6 @@ def render_records_section(
 # =========================================
 df = load_data()
 
-# Header
 logo_path = os.path.join(os.path.dirname(__file__), LOGO_FILENAME)
 if os.path.exists(logo_path):
     st.image(Image.open(logo_path), width=250)
@@ -606,22 +606,16 @@ if os.path.exists(logo_path):
 st.title("PacketLight - APS Disruption Time Results")
 st.subheader("(W2P / P2W Disruption Time Measurements)")
 
-# Sidebar + filters
 base_filters, measurement_filters, selected_columns = sidebar_filters(df)
 
-# 1) Base filtered df (for SUMMARY + also base for full-table)
 base_filtered_df = apply_base_filters(df, base_filters)
-
-# 2) Records df = base + W2P/P2W thresholds (for FULL TABLE ONLY)
 records_filtered_df = apply_measurement_filters_records_only(base_filtered_df, measurement_filters)
 
-# Rename for display
 summary_display_df = base_filtered_df.rename(columns=DISPLAY_COLUMNS_MAP)
 records_display_df = records_filtered_df.rename(columns=DISPLAY_COLUMNS_MAP)
 
 selected_columns = [c for c in selected_columns if c in records_display_df.columns]
 
-# Records section (tabs)
 base_original_df_for_graph, summary_df_original = render_records_section(
     summary_display_df=summary_display_df,
     records_display_df=records_display_df,
@@ -629,5 +623,4 @@ base_original_df_for_graph, summary_df_original = render_records_section(
     logo_path=logo_path
 )
 
-# Graph by Combination ID (based on BASE-filtered df, not on W2P/P2W thresholds)
 render_graph_by_combination_id(base_original_df_for_graph, summary_df_original, id_col="Combination ID")
