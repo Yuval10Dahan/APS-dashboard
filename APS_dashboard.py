@@ -417,7 +417,7 @@ def render_graph_by_combination_id(
                     continue
                 details_parts.append(str(val))
         details = " | ".join(details_parts[:4])
-        title_prefix = "APS Disruption Time"
+        title_prefix = f"Combination ID {comb_id} - Graph"
         if details:
             title_prefix += f"<br><sup>{details}</sup>"
 
