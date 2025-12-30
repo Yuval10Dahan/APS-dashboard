@@ -48,26 +48,82 @@ CONFIG_COLS = [
 
 AUTO_LOG_RATIO_THRESHOLD = 200  # max/median >= this => use log
 
-# ======================================================================================
-# Reset mechanism (Streamlit 1.40.1): tokenized keys to force widget remount
-# ======================================================================================
+# =========================================
+# Query Params helpers (persist across F5)
+# =========================================
+QP = st.query_params  # dict-like
+
+def qp_get_list(key: str) -> list[str]:
+    if key not in QP:
+        return []
+    val = QP.get(key)
+    if isinstance(val, list):
+        out = []
+        for x in val:
+            out.extend([p for p in str(x).split(",") if p != ""])
+        return out
+    return [p for p in str(val).split(",") if p != ""]
+
+def qp_get_str(key: str, default: str = "") -> str:
+    if key not in QP:
+        return default
+    val = QP.get(key)
+    if isinstance(val, list):
+        return str(val[0]) if val else default
+    return str(val)
+
+def qp_get_float(key: str, default: float = 0.0) -> float:
+    s = qp_get_str(key, "")
+    try:
+        return float(s)
+    except Exception:
+        return default
+
+def qp_set_list(key: str, values: list) -> None:
+    if values:
+        QP[key] = ",".join([str(x) for x in values])
+    else:
+        QP.pop(key, None)
+
+def qp_set_str(key: str, value: str, default: str = "") -> None:
+    if value is None or value == default:
+        QP.pop(key, None)
+    else:
+        QP[key] = str(value)
+
+def qp_set_float(key: str, value: float, default: float = 0.0) -> None:
+    try:
+        v = float(value)
+    except Exception:
+        v = default
+    if v == float(default):
+        QP.pop(key, None)
+    else:
+        QP[key] = str(v)
+
+# =========================================
+# Reset mechanism (Streamlit 1.40.1 safe)
+# - Callback only sets flag
+# - Reset executed at top before widgets
+# - reset_token forces widgets to remount (clears old UI state)
+# =========================================
 if "reset_token" not in st.session_state:
     st.session_state["reset_token"] = 0
-
-reset_token = st.session_state["reset_token"]
-
-def K(name: str) -> str:
-    return f"{name}__rt{reset_token}"
 
 def _mark_reset():
     st.session_state["_do_reset"] = True
 
-# Execute reset BEFORE widgets are created
 if st.session_state.get("_do_reset", False):
     st.session_state["_do_reset"] = False
-    st.query_params.clear()               # (optional; you don't use query params here, but keeps URL clean)
-    st.session_state["reset_token"] += 1  # remount all widgets
+    st.query_params.clear()
+    st.session_state["reset_token"] += 1
     st.rerun()
+
+reset_token = st.session_state["reset_token"]
+
+def K(name: str) -> str:
+    # stable between reruns; changes only on Reset
+    return f"{name}__rt{reset_token}"
 
 # =========================================
 # HELPERS
@@ -129,72 +185,114 @@ def sidebar_filters(df: pd.DataFrame):
     """
     with st.sidebar:
         st.subheader("Contact: Yuval Dahan")
-
-        # ✅ Reset button (same behavior as your Latency dashboard)
         st.button("🔄 Reset Button", on_click=_mark_reset, use_container_width=True)
 
         st.header("🔍 Filters")
-
         filtered_options_df = df.copy()
 
-        def multisel(col, label, key_name):
+        def multisel(col, label, qp_key, key_name):
             nonlocal filtered_options_df
             selected = []
             if col in filtered_options_df.columns:
-                selected = st.multiselect(
-                    label,
-                    sorted(filtered_options_df[col].dropna().unique()),
-                    key=K(key_name)
-                )
+                options = sorted(filtered_options_df[col].dropna().unique())
+                default = [x for x in qp_get_list(qp_key) if x in options]
+                selected = st.multiselect(label, options, default=default, key=K(key_name))
                 if selected:
                     filtered_options_df = filtered_options_df[filtered_options_df[col].isin(selected)]
             return selected
 
         # ---- Base filters (shared) ----
-        selected_product = multisel("Product Name", "Product Name", "f_product")
-        selected_protection = multisel("Protection Type", "Protection Type", "f_protection")
-        selected_sw = multisel("SoftWare Version", "Software Version", "f_sw")
-        selected_mode = multisel("System Mode", "System Mode", "f_mode")
-        selected_uplink = multisel("Uplink Service Type", "Uplink Service Type", "f_uplink")
-        selected_client = multisel("Client Service Type", "Client Service Type", "f_client")
-        selected_transceiver_pn = multisel("Transceiver PN", "Transceiver PN", "f_tr_pn")
-        selected_transceiver_fw = multisel("Transceiver FW", "Transceiver FW", "f_tr_fw")
+        selected_product        = multisel("Product Name",        "Product Name",        "prod",   "f_product")
+        selected_protection     = multisel("Protection Type",     "Protection Type",     "prot",   "f_protection")
+        selected_sw             = multisel("SoftWare Version",    "Software Version",    "sw",     "f_sw")
+        selected_mode           = multisel("System Mode",         "System Mode",         "mode",   "f_mode")
+        selected_uplink         = multisel("Uplink Service Type", "Uplink Service Type", "uplink", "f_uplink")
+        selected_client         = multisel("Client Service Type", "Client Service Type", "client", "f_client")
+        selected_transceiver_pn = multisel("Transceiver PN",      "Transceiver PN",      "tpn",    "f_tr_pn")
+        selected_transceiver_fw = multisel("Transceiver FW",      "Transceiver FW",      "tfw",    "f_tr_fw")
 
         selected_timestamp = []
         if "Time Stamp" in filtered_options_df.columns:
             ts_options = sorted(filtered_options_df["Time Stamp"].dropna().unique(), reverse=True)
-            selected_timestamp = st.multiselect("Date & Time", ts_options, key=K("f_ts"))
+            default_ts = [x for x in qp_get_list("ts") if x in ts_options]
+            selected_timestamp = st.multiselect("Date & Time", ts_options, default=default_ts, key=K("f_ts"))
             if selected_timestamp:
                 filtered_options_df = filtered_options_df[filtered_options_df["Time Stamp"].isin(selected_timestamp)]
 
         # ---- Measurements filters (records-only) ----
         st.header("⏱️ W2P Filter (Only Full table)")
+        w2p_type_default = qp_get_str("w2p_t", "Show All")
+        if w2p_type_default not in ["Show All", "Above", "Below"]:
+            w2p_type_default = "Show All"
         w2p_filter_type = st.radio(
             "Filter W2P:",
             ["Show All", "Above", "Below"],
             horizontal=True,
-            key=K("w2p_radio")
+            index=["Show All", "Above", "Below"].index(w2p_type_default),
+            key=K("w2p_radio"),
         )
-        w2p_threshold = st.number_input("W2P Threshold", min_value=0.0, step=0.1, key=K("w2p_thr"))
+        w2p_threshold = st.number_input(
+            "W2P Threshold",
+            min_value=0.0,
+            step=0.1,
+            value=float(qp_get_float("w2p_th", 0.0)),
+            key=K("w2p_thr"),
+        )
 
         st.header("⏱️ P2W Filter (Only Full table)")
+        p2w_type_default = qp_get_str("p2w_t", "Show All")
+        if p2w_type_default not in ["Show All", "Above", "Below"]:
+            p2w_type_default = "Show All"
         p2w_filter_type = st.radio(
             "Filter P2W:",
             ["Show All", "Above", "Below"],
             horizontal=True,
-            key=K("p2w_radio")
+            index=["Show All", "Above", "Below"].index(p2w_type_default),
+            key=K("p2w_radio"),
         )
-        p2w_threshold = st.number_input("P2W Threshold", min_value=0.0, step=0.1, key=K("p2w_thr"))
+        p2w_threshold = st.number_input(
+            "P2W Threshold",
+            min_value=0.0,
+            step=0.1,
+            value=float(qp_get_float("p2w_th", 0.0)),
+            key=K("p2w_thr"),
+        )
 
+        # ---- Columns ----
         st.header("🧩 Columns to Display (Only Full table)")
         st.caption("Toggle columns on/off for the FULL table view:")
         display_df_preview = df.rename(columns=DISPLAY_COLUMNS_MAP)
 
+        all_cols = list(display_df_preview.columns)
+        cols_from_qp = qp_get_list("cols")
+        cols_default = [c for c in cols_from_qp if c in all_cols] if cols_from_qp else all_cols
+        if not cols_default:
+            cols_default = all_cols
+
         checkbox_columns = {}
-        for col in display_df_preview.columns:
-            checkbox_columns[col] = st.checkbox(col, value=True, key=K(f"col_{col}"))
+        for col in all_cols:
+            checkbox_columns[col] = st.checkbox(col, value=(col in cols_default), key=K(f"col_{col}"))
 
         selected_columns = [col for col, show in checkbox_columns.items() if show]
+
+    # Persist current selections to query params (survive F5)
+    qp_set_list("prod",   selected_product)
+    qp_set_list("prot",   selected_protection)
+    qp_set_list("sw",     selected_sw)
+    qp_set_list("mode",   selected_mode)
+    qp_set_list("uplink", selected_uplink)
+    qp_set_list("client", selected_client)
+    qp_set_list("tpn",    selected_transceiver_pn)
+    qp_set_list("tfw",    selected_transceiver_fw)
+    qp_set_list("ts",     selected_timestamp)
+
+    qp_set_str("w2p_t", w2p_filter_type, default="Show All")
+    qp_set_float("w2p_th", w2p_threshold, default=0.0)
+
+    qp_set_str("p2w_t", p2w_filter_type, default="Show All")
+    qp_set_float("p2w_th", p2w_threshold, default=0.0)
+
+    qp_set_list("cols", selected_columns)
 
     base_filters = {
         "selected_product": selected_product,
@@ -371,6 +469,14 @@ def render_graph_by_combination_id(
     max_id = int(summary_df_original[id_col].max()) if id_col in summary_df_original.columns else 1
     max_id = max(1, max_id)
 
+    # persisted defaults
+    comb_default = int(qp_get_float("cid", 1.0))
+    comb_default = min(max(1, comb_default), max_id)
+
+    scale_default = qp_get_str("ys", "Auto")
+    if scale_default not in ["Auto", "Log"]:
+        scale_default = "Auto"
+
     c1, c2, c3 = st.columns([1.6, 1.0, 8.0])
     with c1:
         st.markdown("**Enter Combination ID**")
@@ -379,7 +485,7 @@ def render_graph_by_combination_id(
             label="",
             min_value=1,
             max_value=max_id,
-            value=1,
+            value=int(comb_default),
             step=1,
             key=K("comb_id_input"),
             label_visibility="collapsed",
@@ -388,7 +494,17 @@ def render_graph_by_combination_id(
         st.empty()
 
     with st.popover("Graph display options"):
-        scale_mode = st.radio("Y-axis scale", ["Auto", "Log"], horizontal=True, key=K("y_scale_mode"))
+        scale_mode = st.radio(
+            "Y-axis scale",
+            ["Auto", "Log"],
+            horizontal=True,
+            index=["Auto", "Log"].index(scale_default),
+            key=K("y_scale_mode")
+        )
+
+    # persist graph options too
+    qp_set_float("cid", float(comb_id), default=1.0)
+    qp_set_str("ys", scale_mode, default="Auto")
 
     if st.button("📊 Generate Graph", key=K("btn_graph_by_id")):
         if id_col not in summary_df_original.columns:
@@ -458,20 +574,13 @@ def render_graph_by_combination_id(
         if use_log and scale_mode == "Auto":
             st.info("Y-axis switched to **log scale** automatically (large max/median spread).")
 
-        w2p_plot = w2p.copy()
-        p2w_plot = p2w.copy()
-
-        y_min = float(pd.concat([w2p_plot, p2w_plot]).min())
-        y_max = float(pd.concat([w2p_plot, p2w_plot]).max())
+        y_min = float(pd.concat([w2p, p2w]).min())
+        y_max = float(pd.concat([w2p, p2w]).max())
         pad = (y_max - y_min) * 0.05 if y_max > y_min else 1.0
         y_range = [y_min - pad, y_max + pad]
 
         fig1 = go.Figure()
-        fig1.add_trace(go.Scatter(
-            x=plot_df["Number"], y=w2p_plot, mode="lines", name="W2P (ms)",
-            line=dict(width=2),
-            connectgaps=True
-        ))
+        fig1.add_trace(go.Scatter(x=plot_df["Number"], y=w2p, mode="lines", name="W2P (ms)", line=dict(width=2), connectgaps=True))
         fig1.update_layout(
             title=dict(text=f"{title_prefix}<br><sup>W2P</sup>", x=0.5),
             xaxis=dict(title="Cycle / Sample Number", tickangle=90, nticks=35, showgrid=False),
@@ -481,7 +590,6 @@ def render_graph_by_combination_id(
             height=420,
             margin=dict(l=60, r=30, t=80, b=80),
         )
-        fig1.update_xaxes(rangeslider_visible=False)
         fig1.update_yaxes(type="log" if use_log else "linear")
         if not use_log:
             fig1.update_yaxes(range=y_range)
@@ -490,11 +598,7 @@ def render_graph_by_combination_id(
         st.divider()
 
         fig2 = go.Figure()
-        fig2.add_trace(go.Scatter(
-            x=plot_df["Number"], y=p2w_plot, mode="lines", name="P2W (ms)",
-            line=dict(width=2),
-            connectgaps=True
-        ))
+        fig2.add_trace(go.Scatter(x=plot_df["Number"], y=p2w, mode="lines", name="P2W (ms)", line=dict(width=2), connectgaps=True))
         fig2.update_layout(
             title=dict(text=f"{title_prefix}<br><sup>P2W</sup>", x=0.5),
             xaxis=dict(title="Cycle / Sample Number", tickangle=90, nticks=35, showgrid=False),
@@ -504,7 +608,6 @@ def render_graph_by_combination_id(
             height=420,
             margin=dict(l=60, r=30, t=80, b=80),
         )
-        fig2.update_xaxes(rangeslider_visible=False)
         fig2.update_yaxes(type="log" if use_log else "linear")
         if not use_log:
             fig2.update_yaxes(range=y_range)
