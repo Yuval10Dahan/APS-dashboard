@@ -374,7 +374,9 @@ def render_graph_by_combination_id(
     with c3:
         st.empty()
 
-    with st.expander("Graph display options", expanded=True):
+    # with st.expander("Graph display options", expanded=True):
+    #     scale_mode = st.radio("Y-axis scale", ["Auto", "Log"], horizontal=True, key="y_scale_mode")
+    with st.popover("Graph display options"):
         scale_mode = st.radio("Y-axis scale", ["Auto", "Log"], horizontal=True, key="y_scale_mode")
 
     if st.button("📊 Generate Graph", key="btn_graph_by_id"):
