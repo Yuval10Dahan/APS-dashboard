@@ -1,5 +1,5 @@
 import streamlit as st
-st.set_page_config(page_title="APS Disruption Time Results", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="APS Disruption Time Results", page_icon="🦘", layout="wide", initial_sidebar_state="expanded")
 
 import os
 import io
