@@ -37,7 +37,10 @@ engine = create_engine(f"sqlite:///{DB_PATH}")
 DISPLAY_COLUMNS_MAP = {
     "_rowid_": "ID",
     "Product Name": "Product Name",
+    "Number": "Sample Number",
     "Protection Type": "Protection Type",
+    "W2P Measurement": "W2P (ms)",
+    "P2W Measurement": "P2W (ms)",
     "SoftWare Version": "Software Version",
     "System Mode": "System Mode",
     "Uplink Service Type": "Uplink Service Type",
@@ -45,9 +48,6 @@ DISPLAY_COLUMNS_MAP = {
     "Transceiver PN": "Transceiver PN",
     "Transceiver FW": "Transceiver FW",
     "Time Stamp": "Date & Time",
-    "Number": "Sample Number",
-    "W2P Measurement": "W2P (ms)",
-    "P2W Measurement": "P2W (ms)",
 }
 
 CONFIG_COLS = [
