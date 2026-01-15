@@ -7,6 +7,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from sqlalchemy import create_engine
 from PIL import Image
+import streamlit.components.v1 as components
+
 
 # =========================================
 # CONFIG
@@ -501,11 +503,11 @@ def render_styled_html_table(styler):
         <style>
             #summary_table_wrap table {{
                 border-collapse: collapse;
-                font-size: 12px;
+                font-size: 14px;      /* 👈 adjust size here */
                 width: auto;
             }}
             #summary_table_wrap th, #summary_table_wrap td {{
-                padding: 6px 10px;
+                padding: 8px 12px;   /* 👈 adjust size here */
                 text-align: center;
                 white-space: nowrap;
             }}
@@ -516,7 +518,9 @@ def render_styled_html_table(styler):
         {html}
     </div>
     """
-    st.markdown(wrapped, unsafe_allow_html=True)
+
+    # ✅ renders as real HTML, no stray </div> text
+    components.html(wrapped, height=520, scrolling=True)
 
 
 def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | None = None,
