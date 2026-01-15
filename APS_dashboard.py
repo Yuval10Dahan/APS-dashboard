@@ -48,7 +48,6 @@ CONFIG_COLS = [
 
 AUTO_LOG_RATIO_THRESHOLD = 200  # max/median >= this => use log
 
-# ✅ This is the FULL TABLE order (original column names) you already use in load_data()
 FULL_TABLE_ORDER_ORIGINAL = [
     "Product Name",
     "Number",
@@ -177,11 +176,6 @@ def build_column_config_for_autowidth(df: pd.DataFrame, min_px=90, max_px=380, p
 
 
 def sidebar_filters(df: pd.DataFrame):
-    """
-    Sidebar filters:
-      - "Base filters" affect BOTH Summary + Full table
-      - W2P/P2W filters affect ONLY the Full table (records)
-    """
     with st.sidebar:
         st.subheader("Contact: Yuval Dahan")
         st.button("🔄 Reset Button", on_click=_mark_reset, use_container_width=True)
@@ -274,7 +268,6 @@ def sidebar_filters(df: pd.DataFrame):
 
         selected_columns = [col for col, show in checkbox_columns.items() if show]
 
-    # Persist current selections to query params (survive F5)
     qp_set_list("prod",   selected_product)
     qp_set_list("prot",   selected_protection)
     qp_set_list("sw",     selected_sw)
@@ -410,22 +403,15 @@ def build_summary_table(filtered_df_original_names: pd.DataFrame) -> pd.DataFram
     return out
 
 
-# ✅ Make Summary column order match FULL TABLE order as much as possible
-# Full table order: Product Name, Number, W2P Measurement, P2W Measurement, ... Time Stamp, ID
-# Summary doesn't have Number/W2P Measurement/P2W Measurement, so we map them to:
-# Number -> Total Number of Measurements
-# W2P Measurement -> W2P Below/Equal..., W2P Above...
-# P2W Measurement -> P2W Below/Equal..., P2W Above...
 def reorder_summary_like_full_table(summary_df: pd.DataFrame) -> pd.DataFrame:
     if summary_df is None or summary_df.empty:
         return summary_df
 
-    # mapping from full-table "slot" -> summary columns
     slot_map = {
         "Number": ["Total Number of Measurements"],
         "W2P Measurement": ["W2P Below/Equal 50ms [%]", "W2P Above 50ms [%]"],
         "P2W Measurement": ["P2W Below/Equal 50ms [%]", "P2W Above 50ms [%]"],
-        "_rowid_": [],  # no ID in summary
+        "_rowid_": [],
     }
 
     wanted = ["Combination ID"]
@@ -435,16 +421,15 @@ def reorder_summary_like_full_table(summary_df: pd.DataFrame) -> pd.DataFrame:
         else:
             wanted.append(col)
 
-    # keep only columns that exist, then append any leftovers at the end
     ordered = [c for c in wanted if c in summary_df.columns]
     leftovers = [c for c in summary_df.columns if c not in ordered]
     return summary_df[ordered + leftovers]
 
 
 # =========================================
-# Summary highlighting (YOUR RULES)
-# - If Below > Above => color Below cell GREEN
-# - Else => color Above cell RED
+# Summary highlighting + "two blocks" look (W2P block vs P2W block)
+# (Streamlit doesn't reliably apply header CSS from Styler,
+#  so we color the whole columns + add a thick divider between blocks.)
 # =========================================
 def style_summary_table(df: pd.DataFrame):
     w2p_b = "W2P Below/Equal 50ms [%]"
@@ -452,37 +437,70 @@ def style_summary_table(df: pd.DataFrame):
     p2w_b = "P2W Below/Equal 50ms [%]"
     p2w_a = "P2W Above 50ms [%]"
 
+    W2P_BLOCK = [c for c in [w2p_b, w2p_a] if c in df.columns]
+    P2W_BLOCK = [c for c in [p2w_b, p2w_a] if c in df.columns]
+
+    # light “zone” background colors (like your image)
+    W2P_ZONE_BG = "#FFF3E6"  # light orange
+    P2W_ZONE_BG = "#EAF2FF"  # light blue
+    DIVIDER = "5px solid #1F2937"  # dark thick separator
+
     def _apply(row: pd.Series):
         styles = [""] * len(row.index)
         idx = {c: i for i, c in enumerate(row.index)}
 
-        # W2P: green Below if Below > Above else red Above
+        # ----- base zone fill -----
+        for c in W2P_BLOCK:
+            styles[idx[c]] = f"background-color:{W2P_ZONE_BG};"
+        for c in P2W_BLOCK:
+            styles[idx[c]] = f"background-color:{P2W_ZONE_BG};"
+
+        # divider between the blocks (right of W2P Above / left of P2W Below)
+        if w2p_a in idx:
+            styles[idx[w2p_a]] += f" border-right:{DIVIDER};"
+        if p2w_b in idx:
+            styles[idx[p2w_b]] += f" border-left:{DIVIDER};"
+
+        # ----- your red/green winner rules (override background) -----
         if w2p_b in idx and w2p_a in idx:
             try:
                 vb = float(row[w2p_b])
                 va = float(row[w2p_a])
                 if vb > va:
-                    styles[idx[w2p_b]] = "background-color:#C6EFCE; color:#006100; font-weight:700;"
+                    styles[idx[w2p_b]] = "background-color:#C6EFCE; color:#006100; font-weight:900;"
+                    # keep divider if the winning cell is also the divider cell (not here)
                 else:
-                    styles[idx[w2p_a]] = "background-color:#FFC7CE; color:#9C0006; font-weight:700;"
+                    styles[idx[w2p_a]] = f"background-color:#FFC7CE; color:#9C0006; font-weight:900; border-right:{DIVIDER};"
             except Exception:
                 pass
 
-        # P2W: green Below if Below > Above else red Above
         if p2w_b in idx and p2w_a in idx:
             try:
                 vb = float(row[p2w_b])
                 va = float(row[p2w_a])
                 if vb > va:
-                    styles[idx[p2w_b]] = "background-color:#C6EFCE; color:#006100; font-weight:700;"
+                    styles[idx[p2w_b]] = f"background-color:#C6EFCE; color:#006100; font-weight:900; border-left:{DIVIDER};"
                 else:
-                    styles[idx[p2w_a]] = "background-color:#FFC7CE; color:#9C0006; font-weight:700;"
+                    styles[idx[p2w_a]] = "background-color:#FFC7CE; color:#9C0006; font-weight:900;"
             except Exception:
                 pass
 
         return styles
 
-    return df.style.apply(_apply, axis=1).format(precision=4)
+    styler = df.style.apply(_apply, axis=1).format(precision=4)
+
+    # Make the 4 measurement columns bold always
+    bold_cols = [c for c in [w2p_b, w2p_a, p2w_b, p2w_a] if c in df.columns]
+    if bold_cols:
+        styler = styler.set_properties(subset=bold_cols, **{"font-weight": "900"})
+
+    # Also enforce divider on the whole columns (not only per-row) for stability
+    if w2p_a in df.columns:
+        styler = styler.set_properties(subset=[w2p_a], **{"border-right": DIVIDER})
+    if p2w_b in df.columns:
+        styler = styler.set_properties(subset=[p2w_b], **{"border-left": DIVIDER})
+
+    return styler
 
 
 def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | None = None,
@@ -543,7 +561,6 @@ def render_graph_by_combination_id(
     max_id = int(summary_df_original[id_col].max()) if id_col in summary_df_original.columns else 1
     max_id = max(1, max_id)
 
-    # persisted defaults
     comb_default = int(qp_get_float("cid", 1.0))
     comb_default = min(max(1, comb_default), max_id)
 
@@ -576,7 +593,6 @@ def render_graph_by_combination_id(
             key=K("y_scale_mode")
         )
 
-    # persist graph options too
     qp_set_float("cid", float(comb_id), default=1.0)
     qp_set_str("ys", scale_mode, default="Auto")
 
@@ -616,19 +632,6 @@ def render_graph_by_combination_id(
             st.warning("No samples to plot for this Combination ID (after filters).")
             return
 
-        details_parts = []
-        for c in ["Product Name", "Protection Type", "SoftWare Version", "System Mode",
-                  "Uplink Service Type", "Client Service Type", "Transceiver PN", "Transceiver FW", "Time Stamp"]:
-            if c in row.columns:
-                val = row.iloc[0][c]
-                if pd.isna(val):
-                    continue
-                details_parts.append(str(val))
-        details = " | ".join(details_parts[:4])
-        title_prefix = f"Combination ID Graph: {comb_id}"
-        if details:
-            title_prefix += f"<br><sup>{details}</sup>"
-
         w2p = pd.to_numeric(plot_df["W2P Measurement"], errors="coerce")
         p2w = pd.to_numeric(plot_df["P2W Measurement"], errors="coerce")
         y_all = pd.concat([w2p, p2w]).dropna()
@@ -645,9 +648,6 @@ def render_graph_by_combination_id(
             ratio = (mx / med) if med and med > 0 else float("inf")
             use_log = ratio >= AUTO_LOG_RATIO_THRESHOLD
 
-        if use_log and scale_mode == "Auto":
-            st.info("Y-axis switched to **log scale** automatically (large max/median spread).")
-
         y_min = float(pd.concat([w2p, p2w]).min())
         y_max = float(pd.concat([w2p, p2w]).max())
         pad = (y_max - y_min) * 0.05 if y_max > y_min else 1.0
@@ -656,7 +656,7 @@ def render_graph_by_combination_id(
         fig1 = go.Figure()
         fig1.add_trace(go.Scatter(x=plot_df["Number"], y=w2p, mode="lines", name="W2P (ms)", line=dict(width=2), connectgaps=True))
         fig1.update_layout(
-            title=dict(text=f"{title_prefix}<br><sup>W2P</sup>", x=0.5),
+            title=dict(text=f"Combination ID Graph: {comb_id}<br><sup>W2P</sup>", x=0.5),
             xaxis=dict(title="Cycle / Sample Number", tickangle=90, nticks=35, showgrid=False),
             yaxis=dict(title="Disruption Time (mSec)", showgrid=True),
             plot_bgcolor="white", paper_bgcolor="white",
@@ -674,7 +674,7 @@ def render_graph_by_combination_id(
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(x=plot_df["Number"], y=p2w, mode="lines", name="P2W (ms)", line=dict(width=2), connectgaps=True))
         fig2.update_layout(
-            title=dict(text=f"{title_prefix}<br><sup>P2W</sup>", x=0.5),
+            title=dict(text=f"Combination ID Graph: {comb_id}<br><sup>P2W</sup>", x=0.5),
             xaxis=dict(title="Cycle / Sample Number", tickangle=90, nticks=35, showgrid=False),
             yaxis=dict(title="Disruption Time (mSec)", showgrid=True),
             plot_bgcolor="white", paper_bgcolor="white",
@@ -705,9 +705,6 @@ def render_records_section(
     if not summary_df.empty:
         summary_df = summary_df.reset_index(drop=True)
         summary_df.insert(0, "Combination ID", range(1, len(summary_df) + 1))
-
-        # ✅ THIS IS THE IMPORTANT PART:
-        # make summary columns follow the same "order logic" as Full table
         summary_df = reorder_summary_like_full_table(summary_df)
 
     combinations_count = int(len(summary_df))
