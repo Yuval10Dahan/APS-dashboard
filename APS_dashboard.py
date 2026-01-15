@@ -440,10 +440,12 @@ def style_summary_table(df: pd.DataFrame):
     W2P_BLOCK = [c for c in [w2p_b, w2p_a] if c in df.columns]
     P2W_BLOCK = [c for c in [p2w_b, p2w_a] if c in df.columns]
 
-    # light “zone” background colors (like your image)
     W2P_ZONE_BG = "#FFF3E6"  # light orange
     P2W_ZONE_BG = "#EAF2FF"  # light blue
-    DIVIDER = "5px solid #1F2937"  # dark thick separator
+
+    # ✅ BOLD BLACK LINE (like your drawing)
+    DIVIDER = "10px solid #000000"
+    DIVIDER_SHADOW = "box-shadow: 3px 0 0 #000000;"  # extra thickness feel
 
     def _apply(row: pd.Series):
         styles = [""] * len(row.index)
@@ -455,22 +457,21 @@ def style_summary_table(df: pd.DataFrame):
         for c in P2W_BLOCK:
             styles[idx[c]] = f"background-color:{P2W_ZONE_BG};"
 
-        # divider between the blocks (right of W2P Above / left of P2W Below)
+        # ✅ vertical separator between blocks
         if w2p_a in idx:
-            styles[idx[w2p_a]] += f" border-right:{DIVIDER};"
+            styles[idx[w2p_a]] += f" border-right:{DIVIDER}; {DIVIDER_SHADOW}"
         if p2w_b in idx:
             styles[idx[p2w_b]] += f" border-left:{DIVIDER};"
 
-        # ----- your red/green winner rules (override background) -----
+        # ----- your winner rules -----
         if w2p_b in idx and w2p_a in idx:
             try:
                 vb = float(row[w2p_b])
                 va = float(row[w2p_a])
                 if vb > va:
                     styles[idx[w2p_b]] = "background-color:#C6EFCE; color:#006100; font-weight:900;"
-                    # keep divider if the winning cell is also the divider cell (not here)
                 else:
-                    styles[idx[w2p_a]] = f"background-color:#FFC7CE; color:#9C0006; font-weight:900; border-right:{DIVIDER};"
+                    styles[idx[w2p_a]] = f"background-color:#FFC7CE; color:#9C0006; font-weight:900; border-right:{DIVIDER}; {DIVIDER_SHADOW}"
             except Exception:
                 pass
 
@@ -494,7 +495,7 @@ def style_summary_table(df: pd.DataFrame):
     if bold_cols:
         styler = styler.set_properties(subset=bold_cols, **{"font-weight": "900"})
 
-    # Also enforce divider on the whole columns (not only per-row) for stability
+    # Ensure divider always appears (column-level)
     if w2p_a in df.columns:
         styler = styler.set_properties(subset=[w2p_a], **{"border-right": DIVIDER})
     if p2w_b in df.columns:
