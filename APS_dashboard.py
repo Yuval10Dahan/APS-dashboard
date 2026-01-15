@@ -143,9 +143,28 @@ def load_data() -> pd.DataFrame:
     if "Number" in df.columns:
         df["Number"] = pd.to_numeric(df["Number"], errors="coerce")
 
+    # desired_order = [
+    #     "_rowid_",
+    #     "Product Name",
+    #     "Protection Type",
+    #     "SoftWare Version",
+    #     "System Mode",
+    #     "Uplink Service Type",
+    #     "Client Service Type",
+    #     "Transceiver PN",
+    #     "Transceiver FW",
+    #     "Time Stamp",
+    #     "Number",
+    #     "W2P Measurement",
+    #     "P2W Measurement",
+    # ]
+
     desired_order = [
         "_rowid_",
         "Product Name",
+        "Number",
+        "W2P Measurement",
+        "P2W Measurement",
         "Protection Type",
         "SoftWare Version",
         "System Mode",
@@ -154,9 +173,7 @@ def load_data() -> pd.DataFrame:
         "Transceiver PN",
         "Transceiver FW",
         "Time Stamp",
-        "Number",
-        "W2P Measurement",
-        "P2W Measurement",
+        
     ]
     df = df[[c for c in desired_order if c in df.columns] + [c for c in df.columns if c not in desired_order]]
     return df
