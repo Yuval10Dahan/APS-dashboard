@@ -691,6 +691,36 @@ def render_graph_by_combination_id(
             st.dataframe(plot_df[["Number", "W2P Measurement", "P2W Measurement"]], use_container_width=True)
 
 
+def render_styled_html_table(styler: pd.io.formats.style.Styler):
+    html = styler.to_html()
+
+    wrapped = f"""
+    <div style="
+        overflow-x:auto;
+        max-width:100%;
+    ">
+        <style>
+            table {{
+                border-collapse: collapse;
+                font-size: 12px;        /* 🔹 match st.dataframe */
+                width: auto;
+            }}
+            th, td {{
+                padding: 6px 10px;     /* 🔹 tighter cells */
+                text-align: center;
+                white-space: nowrap;  /* 🔹 prevent tall rows */
+            }}
+            th {{
+                font-weight: 700;
+            }}
+        </style>
+        {html}
+    </div>
+    """
+
+    st.markdown(wrapped, unsafe_allow_html=True)
+
+
 def render_records_section(
     summary_display_df: pd.DataFrame,
     records_display_df: pd.DataFrame,
@@ -723,11 +753,7 @@ def render_records_section(
             })
 
             styled = style_summary_table(shown)
-
-            # Render as HTML so borders (black divider) actually show
-            st.markdown(
-                styled.to_html(),
-                unsafe_allow_html=True)
+            render_styled_html_table(styled)
 
             comb_excel = df_to_excel_bytes(
                 shown,
