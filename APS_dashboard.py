@@ -18,29 +18,10 @@ LOGO_FILENAME = "Packetlight Logo.png"
 DB_PATH = os.path.join(os.path.dirname(__file__), DB_FILENAME)
 engine = create_engine(f"sqlite:///{DB_PATH}")
 
-# DISPLAY_COLUMNS_MAP = {
-#     "_rowid_": "ID",
-#     "Product Name": "Product Name",
-#     "Protection Type": "Protection Type",
-#     "SoftWare Version": "Software Version",
-#     "System Mode": "System Mode",
-#     "Uplink Service Type": "Uplink Service Type",
-#     "Client Service Type": "Client Service Type",
-#     "Transceiver PN": "Transceiver PN",
-#     "Transceiver FW": "Transceiver FW",
-#     "Time Stamp": "Date & Time",
-#     "Number": "Sample Number",
-#     "W2P Measurement": "W2P (ms)",
-#     "P2W Measurement": "P2W (ms)",
-# }
-
 DISPLAY_COLUMNS_MAP = {
     "_rowid_": "ID",
     "Product Name": "Product Name",
-    "Number": "Sample Number",
     "Protection Type": "Protection Type",
-    "W2P Measurement": "W2P (ms)",
-    "P2W Measurement": "P2W (ms)",
     "SoftWare Version": "Software Version",
     "System Mode": "System Mode",
     "Uplink Service Type": "Uplink Service Type",
@@ -48,6 +29,9 @@ DISPLAY_COLUMNS_MAP = {
     "Transceiver PN": "Transceiver PN",
     "Transceiver FW": "Transceiver FW",
     "Time Stamp": "Date & Time",
+    "Number": "Sample Number",
+    "W2P Measurement": "W2P (ms)",
+    "P2W Measurement": "P2W (ms)",
 }
 
 CONFIG_COLS = [
@@ -60,6 +44,25 @@ CONFIG_COLS = [
     "Transceiver PN",
     "Transceiver FW",
     "Time Stamp",
+]
+
+# ✅ NEW: Explicit order for "Summary by Configuration" table
+SUMMARY_COLUMN_ORDER = [
+    "Combination ID",
+    "Product Name",
+    "Protection Type",
+    "SoftWare Version",
+    "System Mode",
+    "Uplink Service Type",
+    "Client Service Type",
+    "Transceiver PN",
+    "Transceiver FW",
+    "Time Stamp",
+    "W2P Below/Equal 50ms [%]",
+    "W2P Above 50ms [%]",
+    "P2W Below/Equal 50ms [%]",
+    "P2W Above 50ms [%]",
+    "Total Number of Measurements",
 ]
 
 AUTO_LOG_RATIO_THRESHOLD = 200  # max/median >= this => use log
@@ -159,22 +162,6 @@ def load_data() -> pd.DataFrame:
     if "Number" in df.columns:
         df["Number"] = pd.to_numeric(df["Number"], errors="coerce")
 
-    # desired_order = [
-    #     "_rowid_",
-    #     "Product Name",
-    #     "Protection Type",
-    #     "SoftWare Version",
-    #     "System Mode",
-    #     "Uplink Service Type",
-    #     "Client Service Type",
-    #     "Transceiver PN",
-    #     "Transceiver FW",
-    #     "Time Stamp",
-    #     "Number",
-    #     "W2P Measurement",
-    #     "P2W Measurement",
-    # ]
-
     desired_order = [
         "Product Name",
         "Number",
@@ -189,7 +176,6 @@ def load_data() -> pd.DataFrame:
         "Transceiver FW",
         "Time Stamp",
         "_rowid_",
-        
     ]
     df = df[[c for c in desired_order if c in df.columns] + [c for c in df.columns if c not in desired_order]]
     return df
@@ -705,6 +691,9 @@ def render_records_section(
         summary_df = summary_df.reset_index(drop=True)
         summary_df.insert(0, "Combination ID", range(1, len(summary_df) + 1))
 
+        # ✅ NEW: Force summary table column order
+        summary_df = summary_df[[c for c in SUMMARY_COLUMN_ORDER if c in summary_df.columns]]
+
     combinations_count = int(len(summary_df))
 
     tab_summary, tab_full = st.tabs(["Summary by Configuration", "Show Measurements Full Table"])
@@ -720,8 +709,6 @@ def render_records_section(
                 "Time Stamp": "Date & Time",
             })
 
-            # ✅ IMPORTANT CHANGE:
-            # Use Styler so the cells get colored (your rules: 79 red, 93 red, etc.)
             st.dataframe(
                 style_summary_table(shown),
                 use_container_width=True,
