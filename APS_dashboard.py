@@ -501,26 +501,41 @@ def render_styled_html_table(styler):
     wrapped = f"""
     <div id="summary_table_wrap" style="overflow-x:auto; max-width:100%;">
         <style>
+            /* ✅ Make the HTML table look like Streamlit (font family + general feel) */
             #summary_table_wrap table {{
                 border-collapse: collapse;
-                font-size: 14px;      /* 👈 adjust size here */
                 width: auto;
+
+                /* Streamlit-like font stack */
+                font-family: Inter, -apple-system, BlinkMacSystemFont,
+                             "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+                /* (keep your sizing as you already tuned it) */
+                font-size: 14px;
             }}
-            #summary_table_wrap th, #summary_table_wrap td {{
-                padding: 8px 12px;   /* 👈 adjust size here */
+
+            #summary_table_wrap th,
+            #summary_table_wrap td {{
+                padding: 8px 12px;
                 text-align: center;
                 white-space: nowrap;
+
+                /* ensure cells inherit the same font */
+                font-family: inherit;
             }}
+
             #summary_table_wrap th {{
-                font-weight: 800;
+                font-weight: 700;
             }}
         </style>
+
         {html}
     </div>
     """
 
     # ✅ renders as real HTML, no stray </div> text
     components.html(wrapped, height=520, scrolling=True)
+
 
 
 def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | None = None,
