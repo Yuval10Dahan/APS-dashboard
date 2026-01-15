@@ -437,33 +437,24 @@ def style_summary_table(df: pd.DataFrame):
     p2w_b = "P2W Below/Equal 50ms [%]"
     p2w_a = "P2W Above 50ms [%]"
 
-    W2P_BLOCK = [c for c in [w2p_b, w2p_a] if c in df.columns]
-    P2W_BLOCK = [c for c in [p2w_b, p2w_a] if c in df.columns]
-
     W2P_ZONE_BG = "#FFF3E6"  # light orange
     P2W_ZONE_BG = "#EAF2FF"  # light blue
 
-    # ✅ BOLD BLACK LINE (like your drawing)
-    DIVIDER = "10px solid #000000"
-    DIVIDER_SHADOW = "box-shadow: 3px 0 0 #000000;"  # extra thickness feel
+    DIVIDER = "10px solid #000000"  # <-- strong black line
 
     def _apply(row: pd.Series):
         styles = [""] * len(row.index)
         idx = {c: i for i, c in enumerate(row.index)}
 
-        # ----- base zone fill -----
-        for c in W2P_BLOCK:
-            styles[idx[c]] = f"background-color:{W2P_ZONE_BG};"
-        for c in P2W_BLOCK:
-            styles[idx[c]] = f"background-color:{P2W_ZONE_BG};"
+        # Base zone fills
+        for c in [w2p_b, w2p_a]:
+            if c in idx:
+                styles[idx[c]] += f"background-color:{W2P_ZONE_BG}; font-weight:900;"
+        for c in [p2w_b, p2w_a]:
+            if c in idx:
+                styles[idx[c]] += f"background-color:{P2W_ZONE_BG}; font-weight:900;"
 
-        # ✅ vertical separator between blocks
-        if w2p_a in idx:
-            styles[idx[w2p_a]] += f" border-right:{DIVIDER}; {DIVIDER_SHADOW}"
-        if p2w_b in idx:
-            styles[idx[p2w_b]] += f" border-left:{DIVIDER};"
-
-        # ----- your winner rules -----
+        # Your winner rules (override bg/text)
         if w2p_b in idx and w2p_a in idx:
             try:
                 vb = float(row[w2p_b])
@@ -471,7 +462,7 @@ def style_summary_table(df: pd.DataFrame):
                 if vb > va:
                     styles[idx[w2p_b]] = "background-color:#C6EFCE; color:#006100; font-weight:900;"
                 else:
-                    styles[idx[w2p_a]] = f"background-color:#FFC7CE; color:#9C0006; font-weight:900; border-right:{DIVIDER}; {DIVIDER_SHADOW}"
+                    styles[idx[w2p_a]] = "background-color:#FFC7CE; color:#9C0006; font-weight:900;"
             except Exception:
                 pass
 
@@ -480,7 +471,7 @@ def style_summary_table(df: pd.DataFrame):
                 vb = float(row[p2w_b])
                 va = float(row[p2w_a])
                 if vb > va:
-                    styles[idx[p2w_b]] = f"background-color:#C6EFCE; color:#006100; font-weight:900; border-left:{DIVIDER};"
+                    styles[idx[p2w_b]] = "background-color:#C6EFCE; color:#006100; font-weight:900;"
                 else:
                     styles[idx[p2w_a]] = "background-color:#FFC7CE; color:#9C0006; font-weight:900;"
             except Exception:
@@ -490,18 +481,26 @@ def style_summary_table(df: pd.DataFrame):
 
     styler = df.style.apply(_apply, axis=1).format(precision=4)
 
-    # Make the 4 measurement columns bold always
-    bold_cols = [c for c in [w2p_b, w2p_a, p2w_b, p2w_a] if c in df.columns]
-    if bold_cols:
-        styler = styler.set_properties(subset=bold_cols, **{"font-weight": "900"})
+    # ✅ Force the vertical divider using table CSS (works in HTML render)
+    if w2p_a in df.columns and p2w_b in df.columns:
+        w2p_a_idx = df.columns.get_loc(w2p_a)
+        p2w_b_idx = df.columns.get_loc(p2w_b)
 
-    # Ensure divider always appears (column-level)
-    if w2p_a in df.columns:
-        styler = styler.set_properties(subset=[w2p_a], **{"border-right": DIVIDER})
-    if p2w_b in df.columns:
-        styler = styler.set_properties(subset=[p2w_b], **{"border-left": DIVIDER})
+        styler = styler.set_table_styles([
+            # Divider on the right side of W2P Above
+            {"selector": f"th.col{w2p_a_idx}", "props": [("border-right", DIVIDER)]},
+            {"selector": f"td.col{w2p_a_idx}", "props": [("border-right", DIVIDER)]},
+
+            # Divider on the left side of P2W Below (helps if table layout shifts)
+            {"selector": f"th.col{p2w_b_idx}", "props": [("border-left", DIVIDER)]},
+            {"selector": f"td.col{p2w_b_idx}", "props": [("border-left", DIVIDER)]},
+
+            # Make headers bold and readable
+            {"selector": "th", "props": [("font-weight", "900")]},
+        ], overwrite=False)
 
     return styler
+
 
 
 def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | None = None,
@@ -723,11 +722,12 @@ def render_records_section(
                 "Time Stamp": "Date & Time",
             })
 
-            st.dataframe(
-                style_summary_table(shown),
-                use_container_width=True,
-                hide_index=True,
-            )
+            styled = style_summary_table(shown)
+
+            # Render as HTML so borders (black divider) actually show
+            st.markdown(
+                styled.to_html(),
+                unsafe_allow_html=True)
 
             comb_excel = df_to_excel_bytes(
                 shown,
