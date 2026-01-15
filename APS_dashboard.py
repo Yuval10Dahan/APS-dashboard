@@ -46,10 +46,14 @@ CONFIG_COLS = [
     "Time Stamp",
 ]
 
-# ✅ NEW: Explicit order for "Summary by Configuration" table
-SUMMARY_COLUMN_ORDER = [
-    "Combination ID",
+AUTO_LOG_RATIO_THRESHOLD = 200  # max/median >= this => use log
+
+# ✅ This is the FULL TABLE order (original column names) you already use in load_data()
+FULL_TABLE_ORDER_ORIGINAL = [
     "Product Name",
+    "Number",
+    "W2P Measurement",
+    "P2W Measurement",
     "Protection Type",
     "SoftWare Version",
     "System Mode",
@@ -58,14 +62,8 @@ SUMMARY_COLUMN_ORDER = [
     "Transceiver PN",
     "Transceiver FW",
     "Time Stamp",
-    "W2P Below/Equal 50ms [%]",
-    "W2P Above 50ms [%]",
-    "P2W Below/Equal 50ms [%]",
-    "P2W Above 50ms [%]",
-    "Total Number of Measurements",
+    "_rowid_",
 ]
-
-AUTO_LOG_RATIO_THRESHOLD = 200  # max/median >= this => use log
 
 # =========================================
 # Query Params helpers (persist across F5)
@@ -162,21 +160,7 @@ def load_data() -> pd.DataFrame:
     if "Number" in df.columns:
         df["Number"] = pd.to_numeric(df["Number"], errors="coerce")
 
-    desired_order = [
-        "Product Name",
-        "Number",
-        "W2P Measurement",
-        "P2W Measurement",
-        "Protection Type",
-        "SoftWare Version",
-        "System Mode",
-        "Uplink Service Type",
-        "Client Service Type",
-        "Transceiver PN",
-        "Transceiver FW",
-        "Time Stamp",
-        "_rowid_",
-    ]
+    desired_order = FULL_TABLE_ORDER_ORIGINAL[:]  # same order as full table
     df = df[[c for c in desired_order if c in df.columns] + [c for c in df.columns if c not in desired_order]]
     return df
 
@@ -424,6 +408,37 @@ def build_summary_table(filtered_df_original_names: pd.DataFrame) -> pd.DataFram
         out = out.sort_values("Time Stamp", ascending=False)
 
     return out
+
+
+# ✅ Make Summary column order match FULL TABLE order as much as possible
+# Full table order: Product Name, Number, W2P Measurement, P2W Measurement, ... Time Stamp, ID
+# Summary doesn't have Number/W2P Measurement/P2W Measurement, so we map them to:
+# Number -> Total Number of Measurements
+# W2P Measurement -> W2P Below/Equal..., W2P Above...
+# P2W Measurement -> P2W Below/Equal..., P2W Above...
+def reorder_summary_like_full_table(summary_df: pd.DataFrame) -> pd.DataFrame:
+    if summary_df is None or summary_df.empty:
+        return summary_df
+
+    # mapping from full-table "slot" -> summary columns
+    slot_map = {
+        "Number": ["Total Number of Measurements"],
+        "W2P Measurement": ["W2P Below/Equal 50ms [%]", "W2P Above 50ms [%]"],
+        "P2W Measurement": ["P2W Below/Equal 50ms [%]", "P2W Above 50ms [%]"],
+        "_rowid_": [],  # no ID in summary
+    }
+
+    wanted = ["Combination ID"]
+    for col in FULL_TABLE_ORDER_ORIGINAL:
+        if col in slot_map:
+            wanted.extend(slot_map[col])
+        else:
+            wanted.append(col)
+
+    # keep only columns that exist, then append any leftovers at the end
+    ordered = [c for c in wanted if c in summary_df.columns]
+    leftovers = [c for c in summary_df.columns if c not in ordered]
+    return summary_df[ordered + leftovers]
 
 
 # =========================================
@@ -691,8 +706,9 @@ def render_records_section(
         summary_df = summary_df.reset_index(drop=True)
         summary_df.insert(0, "Combination ID", range(1, len(summary_df) + 1))
 
-        # ✅ NEW: Force summary table column order
-        summary_df = summary_df[[c for c in SUMMARY_COLUMN_ORDER if c in summary_df.columns]]
+        # ✅ THIS IS THE IMPORTANT PART:
+        # make summary columns follow the same "order logic" as Full table
+        summary_df = reorder_summary_like_full_table(summary_df)
 
     combinations_count = int(len(summary_df))
 
