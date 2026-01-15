@@ -18,6 +18,22 @@ LOGO_FILENAME = "Packetlight Logo.png"
 DB_PATH = os.path.join(os.path.dirname(__file__), DB_FILENAME)
 engine = create_engine(f"sqlite:///{DB_PATH}")
 
+# DISPLAY_COLUMNS_MAP = {
+#     "_rowid_": "ID",
+#     "Product Name": "Product Name",
+#     "Protection Type": "Protection Type",
+#     "SoftWare Version": "Software Version",
+#     "System Mode": "System Mode",
+#     "Uplink Service Type": "Uplink Service Type",
+#     "Client Service Type": "Client Service Type",
+#     "Transceiver PN": "Transceiver PN",
+#     "Transceiver FW": "Transceiver FW",
+#     "Time Stamp": "Date & Time",
+#     "Number": "Sample Number",
+#     "W2P Measurement": "W2P (ms)",
+#     "P2W Measurement": "P2W (ms)",
+# }
+
 DISPLAY_COLUMNS_MAP = {
     "_rowid_": "ID",
     "Product Name": "Product Name",
@@ -160,7 +176,6 @@ def load_data() -> pd.DataFrame:
     # ]
 
     desired_order = [
-        "_rowid_",
         "Product Name",
         "Number",
         "W2P Measurement",
@@ -173,6 +188,7 @@ def load_data() -> pd.DataFrame:
         "Transceiver PN",
         "Transceiver FW",
         "Time Stamp",
+        "_rowid_",
         
     ]
     df = df[[c for c in desired_order if c in df.columns] + [c for c in df.columns if c not in desired_order]]
