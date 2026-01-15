@@ -427,9 +427,7 @@ def reorder_summary_like_full_table(summary_df: pd.DataFrame) -> pd.DataFrame:
 
 
 # =========================================
-# Summary highlighting + "two blocks" look (W2P block vs P2W block)
-# (Streamlit doesn't reliably apply header CSS from Styler,
-#  so we color the whole columns + add a thick divider between blocks.)
+# Summary highlighting + blocks + divider
 # =========================================
 def style_summary_table(df: pd.DataFrame):
     w2p_b = "W2P Below/Equal 50ms [%]"
@@ -439,14 +437,13 @@ def style_summary_table(df: pd.DataFrame):
 
     W2P_ZONE_BG = "#FFF3E6"  # light orange
     P2W_ZONE_BG = "#EAF2FF"  # light blue
-
-    DIVIDER = "10px solid #000000"  # <-- strong black line
+    DIVIDER = "10px solid #000000"
 
     def _apply(row: pd.Series):
         styles = [""] * len(row.index)
         idx = {c: i for i, c in enumerate(row.index)}
 
-        # Base zone fills
+        # base zone fills
         for c in [w2p_b, w2p_a]:
             if c in idx:
                 styles[idx[c]] += f"background-color:{W2P_ZONE_BG}; font-weight:900;"
@@ -454,11 +451,10 @@ def style_summary_table(df: pd.DataFrame):
             if c in idx:
                 styles[idx[c]] += f"background-color:{P2W_ZONE_BG}; font-weight:900;"
 
-        # Your winner rules (override bg/text)
+        # winner rules
         if w2p_b in idx and w2p_a in idx:
             try:
-                vb = float(row[w2p_b])
-                va = float(row[w2p_a])
+                vb = float(row[w2p_b]); va = float(row[w2p_a])
                 if vb > va:
                     styles[idx[w2p_b]] = "background-color:#C6EFCE; color:#006100; font-weight:900;"
                 else:
@@ -468,8 +464,7 @@ def style_summary_table(df: pd.DataFrame):
 
         if p2w_b in idx and p2w_a in idx:
             try:
-                vb = float(row[p2w_b])
-                va = float(row[p2w_a])
+                vb = float(row[p2w_b]); va = float(row[p2w_a])
                 if vb > va:
                     styles[idx[p2w_b]] = "background-color:#C6EFCE; color:#006100; font-weight:900;"
                 else:
@@ -481,26 +476,47 @@ def style_summary_table(df: pd.DataFrame):
 
     styler = df.style.apply(_apply, axis=1).format(precision=4)
 
-    # ✅ Force the vertical divider using table CSS (works in HTML render)
+    # divider between W2P block and P2W block
     if w2p_a in df.columns and p2w_b in df.columns:
         w2p_a_idx = df.columns.get_loc(w2p_a)
         p2w_b_idx = df.columns.get_loc(p2w_b)
 
         styler = styler.set_table_styles([
-            # Divider on the right side of W2P Above
             {"selector": f"th.col{w2p_a_idx}", "props": [("border-right", DIVIDER)]},
             {"selector": f"td.col{w2p_a_idx}", "props": [("border-right", DIVIDER)]},
-
-            # Divider on the left side of P2W Below (helps if table layout shifts)
             {"selector": f"th.col{p2w_b_idx}", "props": [("border-left", DIVIDER)]},
             {"selector": f"td.col{p2w_b_idx}", "props": [("border-left", DIVIDER)]},
-
-            # Make headers bold and readable
             {"selector": "th", "props": [("font-weight", "900")]},
         ], overwrite=False)
 
     return styler
 
+
+# ✅ FIXED: no pandas internal type hint
+def render_styled_html_table(styler):
+    html = styler.to_html()
+
+    wrapped = f"""
+    <div id="summary_table_wrap" style="overflow-x:auto; max-width:100%;">
+        <style>
+            #summary_table_wrap table {{
+                border-collapse: collapse;
+                font-size: 12px;
+                width: auto;
+            }}
+            #summary_table_wrap th, #summary_table_wrap td {{
+                padding: 6px 10px;
+                text-align: center;
+                white-space: nowrap;
+            }}
+            #summary_table_wrap th {{
+                font-weight: 800;
+            }}
+        </style>
+        {html}
+    </div>
+    """
+    st.markdown(wrapped, unsafe_allow_html=True)
 
 
 def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | None = None,
@@ -546,11 +562,7 @@ def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | No
     return output.getvalue()
 
 
-def render_graph_by_combination_id(
-    base_filtered_original_df: pd.DataFrame,
-    summary_df_original: pd.DataFrame,
-    id_col: str = "Combination ID",
-):
+def render_graph_by_combination_id(base_filtered_original_df: pd.DataFrame, summary_df_original: pd.DataFrame, id_col: str = "Combination ID"):
     st.divider()
     st.subheader("📈 Generate Graph")
 
@@ -597,20 +609,12 @@ def render_graph_by_combination_id(
     qp_set_str("ys", scale_mode, default="Auto")
 
     if st.button("📊 Generate Graph", key=K("btn_graph_by_id")):
-        if id_col not in summary_df_original.columns:
-            st.error("Internal error: Summary table does not include Combination ID.")
-            return
-
         row = summary_df_original.loc[summary_df_original[id_col] == int(comb_id)]
         if row.empty:
             st.error(f"Combination ID {comb_id} not found.")
             return
 
         cfg_cols_present = [c for c in CONFIG_COLS if c in base_filtered_original_df.columns and c in row.columns]
-        if not cfg_cols_present:
-            st.error("Missing configuration columns for filtering the combination.")
-            return
-
         mask = pd.Series(True, index=base_filtered_original_df.index)
         for c in cfg_cols_present:
             v = row.iloc[0][c]
@@ -620,13 +624,6 @@ def render_graph_by_combination_id(
                 mask &= (base_filtered_original_df[c] == v)
 
         plot_df = base_filtered_original_df.loc[mask].copy()
-
-        required_cols = {"Number", "W2P Measurement", "P2W Measurement"}
-        miss_cols = [c for c in required_cols if c not in plot_df.columns]
-        if miss_cols:
-            st.error(f"Missing required columns: {miss_cols}")
-            return
-
         plot_df = plot_df.dropna(subset=["Number"]).sort_values("Number")
         if plot_df.empty:
             st.warning("No samples to plot for this Combination ID (after filters).")
@@ -635,14 +632,12 @@ def render_graph_by_combination_id(
         w2p = pd.to_numeric(plot_df["W2P Measurement"], errors="coerce")
         p2w = pd.to_numeric(plot_df["P2W Measurement"], errors="coerce")
         y_all = pd.concat([w2p, p2w]).dropna()
-
         if y_all.empty:
             st.warning("No valid measurements to plot.")
             return
 
-        if scale_mode == "Log":
-            use_log = True
-        else:
+        use_log = (scale_mode == "Log")
+        if not use_log and scale_mode == "Auto":
             med = float(y_all.median()) if len(y_all) else 0.0
             mx = float(y_all.max())
             ratio = (mx / med) if med and med > 0 else float("inf")
@@ -691,42 +686,7 @@ def render_graph_by_combination_id(
             st.dataframe(plot_df[["Number", "W2P Measurement", "P2W Measurement"]], use_container_width=True)
 
 
-def render_styled_html_table(styler: pd.io.formats.style.Styler):
-    html = styler.to_html()
-
-    wrapped = f"""
-    <div style="
-        overflow-x:auto;
-        max-width:100%;
-    ">
-        <style>
-            table {{
-                border-collapse: collapse;
-                font-size: 12px;        /* 🔹 match st.dataframe */
-                width: auto;
-            }}
-            th, td {{
-                padding: 6px 10px;     /* 🔹 tighter cells */
-                text-align: center;
-                white-space: nowrap;  /* 🔹 prevent tall rows */
-            }}
-            th {{
-                font-weight: 700;
-            }}
-        </style>
-        {html}
-    </div>
-    """
-
-    st.markdown(wrapped, unsafe_allow_html=True)
-
-
-def render_records_section(
-    summary_display_df: pd.DataFrame,
-    records_display_df: pd.DataFrame,
-    selected_columns: list[str],
-    logo_path: str
-):
+def render_records_section(summary_display_df: pd.DataFrame, records_display_df: pd.DataFrame, selected_columns: list[str], logo_path: str):
     st.divider()
 
     base_original_df = summary_display_df.rename(columns={v: k for k, v in DISPLAY_COLUMNS_MAP.items()})
