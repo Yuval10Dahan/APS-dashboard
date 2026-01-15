@@ -410,17 +410,10 @@ def build_summary_table(filtered_df_original_names: pd.DataFrame) -> pd.DataFram
     return out
 
 
-# ✅ Make Summary column order match FULL TABLE order as much as possible
-# Full table order: Product Name, Number, W2P Measurement, P2W Measurement, ... Time Stamp, ID
-# Summary doesn't have Number/W2P Measurement/P2W Measurement, so we map them to:
-# Number -> Total Number of Measurements
-# W2P Measurement -> W2P Below/Equal..., W2P Above...
-# P2W Measurement -> P2W Below/Equal..., P2W Above...
 def reorder_summary_like_full_table(summary_df: pd.DataFrame) -> pd.DataFrame:
     if summary_df is None or summary_df.empty:
         return summary_df
 
-    # mapping from full-table "slot" -> summary columns
     slot_map = {
         "Number": ["Total Number of Measurements"],
         "W2P Measurement": ["W2P Below/Equal 50ms [%]", "W2P Above 50ms [%]"],
@@ -435,16 +428,13 @@ def reorder_summary_like_full_table(summary_df: pd.DataFrame) -> pd.DataFrame:
         else:
             wanted.append(col)
 
-    # keep only columns that exist, then append any leftovers at the end
     ordered = [c for c in wanted if c in summary_df.columns]
     leftovers = [c for c in summary_df.columns if c not in ordered]
     return summary_df[ordered + leftovers]
 
 
 # =========================================
-# Summary highlighting (YOUR RULES)
-# - If Below > Above => color Below cell GREEN
-# - Else => color Above cell RED
+# Summary highlighting + group separation (W2P vs P2W)
 # =========================================
 def style_summary_table(df: pd.DataFrame):
     w2p_b = "W2P Below/Equal 50ms [%]"
@@ -462,9 +452,9 @@ def style_summary_table(df: pd.DataFrame):
                 vb = float(row[w2p_b])
                 va = float(row[w2p_a])
                 if vb > va:
-                    styles[idx[w2p_b]] = "background-color:#C6EFCE; color:#006100; font-weight:700;"
+                    styles[idx[w2p_b]] = "background-color:#C6EFCE; color:#006100; font-weight:800;"
                 else:
-                    styles[idx[w2p_a]] = "background-color:#FFC7CE; color:#9C0006; font-weight:700;"
+                    styles[idx[w2p_a]] = "background-color:#FFC7CE; color:#9C0006; font-weight:800;"
             except Exception:
                 pass
 
@@ -474,15 +464,71 @@ def style_summary_table(df: pd.DataFrame):
                 vb = float(row[p2w_b])
                 va = float(row[p2w_a])
                 if vb > va:
-                    styles[idx[p2w_b]] = "background-color:#C6EFCE; color:#006100; font-weight:700;"
+                    styles[idx[p2w_b]] = "background-color:#C6EFCE; color:#006100; font-weight:800;"
                 else:
-                    styles[idx[p2w_a]] = "background-color:#FFC7CE; color:#9C0006; font-weight:700;"
+                    styles[idx[p2w_a]] = "background-color:#FFC7CE; color:#9C0006; font-weight:800;"
             except Exception:
                 pass
 
         return styles
 
-    return df.style.apply(_apply, axis=1).format(precision=4)
+    styler = df.style.apply(_apply, axis=1).format(precision=4)
+
+    # ---- Make the 4 measurement columns bold (even when not red/green) ----
+    bold_cols = [c for c in [w2p_b, w2p_a, p2w_b, p2w_a] if c in df.columns]
+    if bold_cols:
+        styler = styler.set_properties(subset=bold_cols, **{"font-weight": "800"})
+
+    # ---- Add a thick visual separator between W2P pair and P2W pair ----
+    if w2p_a in df.columns:
+        styler = styler.set_properties(subset=[w2p_a], **{"border-right": "4px solid #4b5563"})
+    if p2w_b in df.columns:
+        styler = styler.set_properties(subset=[p2w_b], **{"border-left": "4px solid #4b5563"})
+
+    # ---- Color the headers differently for W2P vs P2W so it “pops” instantly ----
+    col_idx = {name: i for i, name in enumerate(df.columns)}
+    table_styles = []
+
+    # W2P header style (light green tint)
+    for c in [w2p_b, w2p_a]:
+        if c in col_idx:
+            table_styles.append({
+                "selector": f"th.col_heading.level0.col{col_idx[c]}",
+                "props": [
+                    ("background-color", "#E8F5E9"),
+                    ("color", "#1B5E20"),
+                    ("font-weight", "900"),
+                ],
+            })
+
+    # P2W header style (light blue tint)
+    for c in [p2w_b, p2w_a]:
+        if c in col_idx:
+            table_styles.append({
+                "selector": f"th.col_heading.level0.col{col_idx[c]}",
+                "props": [
+                    ("background-color", "#E3F2FD"),
+                    ("color", "#0D47A1"),
+                    ("font-weight", "900"),
+                ],
+            })
+
+    # carry the separator into the header too
+    if w2p_a in col_idx:
+        table_styles.append({
+            "selector": f"th.col_heading.level0.col{col_idx[w2p_a]}",
+            "props": [("border-right", "4px solid #4b5563")],
+        })
+    if p2w_b in col_idx:
+        table_styles.append({
+            "selector": f"th.col_heading.level0.col{col_idx[p2w_b]}",
+            "props": [("border-left", "4px solid #4b5563")],
+        })
+
+    if table_styles:
+        styler = styler.set_table_styles(table_styles, overwrite=False)
+
+    return styler
 
 
 def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | None = None,
@@ -705,9 +751,6 @@ def render_records_section(
     if not summary_df.empty:
         summary_df = summary_df.reset_index(drop=True)
         summary_df.insert(0, "Combination ID", range(1, len(summary_df) + 1))
-
-        # ✅ THIS IS THE IMPORTANT PART:
-        # make summary columns follow the same "order logic" as Full table
         summary_df = reorder_summary_like_full_table(summary_df)
 
     combinations_count = int(len(summary_df))
