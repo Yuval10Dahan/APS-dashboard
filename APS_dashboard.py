@@ -494,23 +494,33 @@ def style_summary_table(df: pd.DataFrame):
     return styler
 
 
-# ✅ FIXED: no pandas internal type hint
 def render_styled_html_table(styler):
     html = styler.to_html()
 
     wrapped = f"""
-    <div id="summary_table_wrap" style="overflow-x:auto; max-width:100%;">
+    <div id="summary_table_wrap">
         <style>
-            /* ✅ Make the HTML table look like Streamlit (font family + general feel) */
+            html, body {{
+                margin: 0;
+                padding: 0;
+                width: 100%;
+            }}
+
+            /* ✅ IMPORTANT: constrain to iframe width */
+            #summary_table_wrap {{
+                width: 100%;
+                max-width: 100%;
+                overflow-x: auto;   /* horizontal scroll */
+                overflow-y: auto;   /* vertical scroll */
+            }}
+
+            /* ✅ IMPORTANT: let the table be as wide as it needs */
             #summary_table_wrap table {{
                 border-collapse: collapse;
-                width: auto;
-
-                /* Streamlit-like font stack */
+                width: max-content;       /* or: display:inline-block */
+                min-width: 100%;
                 font-family: Inter, -apple-system, BlinkMacSystemFont,
                              "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-
-                /* (keep your sizing as you already tuned it) */
                 font-size: 14px;
             }}
 
@@ -519,8 +529,6 @@ def render_styled_html_table(styler):
                 padding: 8px 12px;
                 text-align: center;
                 white-space: nowrap;
-
-                /* ensure cells inherit the same font */
                 font-family: inherit;
             }}
 
@@ -532,9 +540,7 @@ def render_styled_html_table(styler):
         {html}
     </div>
     """
-
-    # ✅ renders as real HTML, no stray </div> text
-    components.html(wrapped, height=520, scrolling=True)
+    components.html(wrapped, height=520, scrolling=False)
 
 
 def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | None = None,
