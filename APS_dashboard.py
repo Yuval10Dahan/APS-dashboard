@@ -540,7 +540,7 @@ def render_styled_html_table(styler):
         {html}
     </div>
     """
-    components.html(wrapped, height=520, scrolling=False)
+    components.html(wrapped, height=520, scrolling=True)
 
 
 def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | None = None,
