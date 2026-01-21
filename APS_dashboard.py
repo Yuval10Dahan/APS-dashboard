@@ -498,49 +498,51 @@ def render_styled_html_table(styler):
     html = styler.to_html()
 
     wrapped = f"""
+    <style>
+      html, body {{
+        margin: 0;
+        padding: 0;
+        width: 100%;
+      }}
+
+      /* ✅ This creates the scrollbars */
+      #summary_table_wrap {{
+        width: 100%;
+        height: 520px;          /* ✅ MUST be fixed for vertical scroll */
+        overflow: auto;         /* ✅ enables BOTH horizontal + vertical */
+        box-sizing: border-box;
+      }}
+
+      /* ✅ Make table keep its natural width so X overflow can happen */
+      #summary_table_wrap table {{
+        border-collapse: collapse;
+        width: max-content;     /* ✅ forces table wider than container if needed */
+        min-width: 100%;        /* ✅ but at least fill available width */
+        font-family: Inter, -apple-system, BlinkMacSystemFont,
+                     "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-size: 14px;
+      }}
+
+      #summary_table_wrap th,
+      #summary_table_wrap td {{
+        padding: 8px 12px;
+        text-align: center;
+        white-space: nowrap;
+        font-family: inherit;
+      }}
+
+      #summary_table_wrap th {{
+        font-weight: 700;
+      }}
+    </style>
+
     <div id="summary_table_wrap">
-        <style>
-            html, body {{
-                margin: 0;
-                padding: 0;
-                width: 100%;
-            }}
-
-            /* ✅ IMPORTANT: constrain to iframe width */
-            #summary_table_wrap {{
-                width: 100%;
-                max-width: 100%;
-                overflow-x: auto;   /* horizontal scroll */
-                overflow-y: auto;   /* vertical scroll */
-            }}
-
-            /* ✅ IMPORTANT: let the table be as wide as it needs */
-            #summary_table_wrap table {{
-                border-collapse: collapse;
-                width: max-content;       /* or: display:inline-block */
-                min-width: 100%;
-                font-family: Inter, -apple-system, BlinkMacSystemFont,
-                             "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                font-size: 14px;
-            }}
-
-            #summary_table_wrap th,
-            #summary_table_wrap td {{
-                padding: 8px 12px;
-                text-align: center;
-                white-space: nowrap;
-                font-family: inherit;
-            }}
-
-            #summary_table_wrap th {{
-                font-weight: 700;
-            }}
-        </style>
-
-        {html}
+      {html}
     </div>
     """
-    components.html(wrapped, height=520, scrolling=True)
+
+    # ✅ iframe should NOT scroll; the inner div scrolls
+    components.html(wrapped, height=520, scrolling=False)
 
 
 def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | None = None,
