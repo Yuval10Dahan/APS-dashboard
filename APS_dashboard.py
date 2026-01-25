@@ -513,8 +513,20 @@ def reorder_summary_like_full_table(summary_df: pd.DataFrame) -> pd.DataFrame:
 
     slot_map = {
         "Number": ["Total Number of Measurements"],
-        "W2P Measurement": ["W2P Below/Equal 50ms [%]", "W2P Above 50ms [%]"],
-        "P2W Measurement": ["P2W Below/Equal 50ms [%]", "P2W Above 50ms [%]"],
+
+        "W2P Measurement": [
+            "W2P Below/Equal 50ms [%]",
+            "W2P Above 50ms [%]",
+        ],
+
+        "P2W Measurement": [
+            "P2W Below/Equal 50ms [%]",
+            "P2W Above 50ms [%]",
+
+            "W2P Link Down Alarm [%]",
+            "P2W Link Down Alarm [%]",
+        ],
+
         "_rowid_": [],
     }
 
