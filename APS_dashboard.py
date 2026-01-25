@@ -205,6 +205,7 @@ def sidebar_filters(df: pd.DataFrame):
         selected_client         = multisel("Client Service Type", "Client Service Type", "client", "f_client")
         selected_transceiver_pn = multisel("Transceiver PN",      "Transceiver PN",      "tpn",    "f_tr_pn")
         selected_transceiver_fw = multisel("Transceiver FW",      "Transceiver FW",      "tfw",    "f_tr_fw")
+        selected_protection_action = multisel("Protection Action", "Protection Action",  "pact",  "f_protection_action")
 
         selected_timestamp = []
         if "Time Stamp" in filtered_options_df.columns:
@@ -279,6 +280,7 @@ def sidebar_filters(df: pd.DataFrame):
     qp_set_list("tpn",    selected_transceiver_pn)
     qp_set_list("tfw",    selected_transceiver_fw)
     qp_set_list("ts",     selected_timestamp)
+    qp_set_list("pact", selected_protection_action)
 
     qp_set_str("w2p_t", w2p_filter_type, default="Show All")
     qp_set_float("w2p_th", w2p_threshold, default=0.0)
@@ -298,6 +300,7 @@ def sidebar_filters(df: pd.DataFrame):
         "selected_transceiver_pn": selected_transceiver_pn,
         "selected_transceiver_fw": selected_transceiver_fw,
         "selected_timestamp": selected_timestamp,
+        "selected_protection_action": selected_protection_action
     }
 
     measurement_filters = {
@@ -327,6 +330,7 @@ def apply_base_filters(df: pd.DataFrame, f: dict) -> pd.DataFrame:
     apply_in("Transceiver PN", f["selected_transceiver_pn"])
     apply_in("Transceiver FW", f["selected_transceiver_fw"])
     apply_in("Time Stamp", f["selected_timestamp"])
+    apply_in("Protection Action", f["selected_protection_action"])
 
     return out
 
@@ -408,7 +412,7 @@ def build_summary_table(filtered_df_original_names: pd.DataFrame) -> pd.DataFram
 
             "W2P Link Down Alarm [%]": w2p_alarm_pct,
             "P2W Link Down Alarm [%]": p2w_alarm_pct,
-
+            
             "Total Number of Measurements": int(len(g)),
         })
         rows.append(row)
@@ -430,8 +434,8 @@ def reorder_summary_like_full_table(summary_df: pd.DataFrame) -> pd.DataFrame:
 
     slot_map = {
         "Number": ["Total Number of Measurements"],
-        "W2P Measurement": ["W2P Below/Equal 50ms [%]", "W2P Above 50ms [%]", "W2P Link Down Alarm [%]"],
-        "P2W Measurement": ["P2W Below/Equal 50ms [%]", "P2W Above 50ms [%]", "P2W Link Down Alarm [%]"],
+        "W2P Measurement": ["W2P Below/Equal 50ms [%]", "W2P Above 50ms [%]"],
+        "P2W Measurement": ["P2W Below/Equal 50ms [%]", "P2W Above 50ms [%]"],
         "_rowid_": [],
     }
 
