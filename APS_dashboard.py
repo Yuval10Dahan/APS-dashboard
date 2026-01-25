@@ -501,7 +501,17 @@ def style_summary_table(df: pd.DataFrame):
 
         return styles
 
-    styler = df.style.apply(_apply, axis=1).format(precision=4)
+    percent_cols = [
+        "W2P Below/Equal 50ms [%]",
+        "W2P Above 50ms [%]",
+        "P2W Below/Equal 50ms [%]",
+        "P2W Above 50ms [%]",
+        "W2P Link Down Alarm [%]",
+        "P2W Link Down Alarm [%]",
+        ]
+
+    fmt = {c: "{:.2f}%" for c in percent_cols if c in df.columns}
+    styler = (df.style.apply(_apply, axis=1).format(fmt))
 
     # divider between W2P block and P2W block
     if w2p_a in df.columns and p2w_b in df.columns:
