@@ -683,26 +683,26 @@ def render_styled_html_table(styler):
         font-size: 14px;
       }}
 
-    #   #summary_table_wrap th,
-    #   #summary_table_wrap td {{
+      #summary_table_wrap th,
+      #summary_table_wrap td {{
+        padding: 8px 12px;
+        text-align: center;
+        white-space: nowrap;
+        font-family: inherit;
+      }}
+
+    #   #summary_table_wrap th {{
     #     padding: 8px 12px;
     #     text-align: center;
-    #     white-space: nowrap;
-    #     font-family: inherit;
-    #   }}
+    #     white-space: normal;      /* ✅ allow line breaks in headers */
+    #     line-height: 1.2;
+    # }}
 
-      #summary_table_wrap th {{
-        padding: 8px 12px;
-        text-align: center;
-        white-space: normal;      /* ✅ allow line breaks in headers */
-        line-height: 1.2;
-    }}
-
-    #summary_table_wrap td {{
-        padding: 8px 12px;
-        text-align: center;
-        white-space: nowrap;      /* ✅ keep data cells compact */
-    }}
+    # #summary_table_wrap td {{
+    #     padding: 8px 12px;
+    #     text-align: center;
+    #     white-space: nowrap;      /* ✅ keep data cells compact */
+    # }}
 
       #summary_table_wrap th {{
         font-weight: 700;
