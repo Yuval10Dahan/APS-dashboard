@@ -368,18 +368,6 @@ def calc_distribution(series: pd.Series) -> dict:
         "Total Number of Measurements": total,
     }
 
-def calc_alarm_percentage(series: pd.Series) -> float:
-    """
-    Calculates percentage of '1' values in a binary alarm column.
-    1 = alarm happened
-    0 = alarm did not happen
-    """
-    s = pd.to_numeric(series, errors="coerce").dropna()
-    total = len(s)
-    if total == 0:
-        return 0.0
-    return (s == 1).sum() / total * 100.0
-
 
 def build_summary_table(filtered_df_original_names: pd.DataFrame) -> pd.DataFrame:
     cols_present = [c for c in CONFIG_COLS if c in filtered_df_original_names.columns]
@@ -397,18 +385,11 @@ def build_summary_table(filtered_df_original_names: pd.DataFrame) -> pd.DataFram
         w2p_dist = calc_distribution(g.get("W2P Measurement"))
         p2w_dist = calc_distribution(g.get("P2W Measurement"))
 
-        w2p_alarm_pct = calc_alarm_percentage(g.get("W2P Link Down Alarm"))
-        p2w_alarm_pct = calc_alarm_percentage(g.get("P2W Link Down Alarm"))
-
         row.update({
             "W2P Below/Equal 50ms [%]": w2p_dist["Below/Equal 50mSec [%]"],
             "W2P Above 50ms [%]": w2p_dist["Above 50mSec [%]"],
             "P2W Below/Equal 50ms [%]": p2w_dist["Below/Equal 50mSec [%]"],
             "P2W Above 50ms [%]": p2w_dist["Above 50mSec [%]"],
-
-            "W2P Link Down Alarm [%]": w2p_alarm_pct,
-            "P2W Link Down Alarm [%]": p2w_alarm_pct,
-            
             "Total Number of Measurements": int(len(g)),
         })
         rows.append(row)
