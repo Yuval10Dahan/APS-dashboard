@@ -68,6 +68,19 @@ FULL_TABLE_ORDER_ORIGINAL = [
     "_rowid_",
 ]
 
+FILTER_KEYS = [
+    ("prod", "sel_product"),
+    ("prot", "sel_protection"),
+    ("pact", "sel_protection_action"),
+    ("sw", "sel_sw"),
+    ("mode", "sel_mode"),
+    ("uplink", "sel_uplink"),
+    ("client", "sel_client"),
+    ("tpn", "sel_tr_pn"),
+    ("tfw", "sel_tr_fw"),
+    ("ts", "sel_ts"),
+]
+
 # =========================================
 # Query Params helpers (persist across F5)
 # =========================================
@@ -133,6 +146,13 @@ def _mark_reset():
 if st.session_state.get("_do_reset", False):
     st.session_state["_do_reset"] = False
     st.query_params.clear()
+
+    for _, state_key in FILTER_KEYS:
+        st.session_state.pop(state_key, None)
+        for k in list(st.session_state.keys()):
+            if k.startswith(f"__tok__{state_key}__"):
+                st.session_state.pop(k, None)
+
     st.session_state["reset_token"] += 1
     st.rerun()
 
@@ -199,23 +219,80 @@ def sidebar_filters(df: pd.DataFrame):
             return selected
 
         # ---- Base filters (shared) ----
-        selected_product        = multisel("Product Name",        "Product Name",        "prod",   "f_product")
-        selected_protection     = multisel("Protection Type",     "Protection Type",     "prot",   "f_protection")
-        selected_sw             = multisel("SoftWare Version",    "Software Version",    "sw",     "f_sw")
-        selected_mode           = multisel("System Mode",         "System Mode",         "mode",   "f_mode")
-        selected_uplink         = multisel("Uplink Service Type", "Uplink Service Type", "uplink", "f_uplink")
-        selected_client         = multisel("Client Service Type", "Client Service Type", "client", "f_client")
-        selected_transceiver_pn = multisel("Transceiver PN",      "Transceiver PN",      "tpn",    "f_tr_pn")
-        selected_transceiver_fw = multisel("Transceiver FW",      "Transceiver FW",      "tfw",    "f_tr_fw")
-        selected_protection_action = multisel("Protection Action", "Protection Action",  "pact",  "f_protection_action")
+        # selected_product        = multisel("Product Name",        "Product Name",        "prod",   "f_product")
+        # selected_protection     = multisel("Protection Type",     "Protection Type",     "prot",   "f_protection")
+        # selected_sw             = multisel("SoftWare Version",    "Software Version",    "sw",     "f_sw")
+        # selected_mode           = multisel("System Mode",         "System Mode",         "mode",   "f_mode")
+        # selected_uplink         = multisel("Uplink Service Type", "Uplink Service Type", "uplink", "f_uplink")
+        # selected_client         = multisel("Client Service Type", "Client Service Type", "client", "f_client")
+        # selected_transceiver_pn = multisel("Transceiver PN",      "Transceiver PN",      "tpn",    "f_tr_pn")
+        # selected_transceiver_fw = multisel("Transceiver FW",      "Transceiver FW",      "tfw",    "f_tr_fw")
+        # selected_protection_action = multisel("Protection Action", "Protection Action",  "pact",  "f_protection_action")
 
+        # ---- Base filters (shared) ----
+        # 1) Product Name
+        product_options = sorted(filtered_options_df["Product Name"].dropna().unique())
+        selected_product = multiselect_autoclose("Product Name", product_options, "prod", "sel_product")
+        if selected_product:
+            filtered_options_df = filtered_options_df[filtered_options_df["Product Name"].isin(selected_product)]
+
+        # 2) Protection Type
+        prot_options = sorted(filtered_options_df["Protection Type"].dropna().unique())
+        selected_protection = multiselect_autoclose("Protection Type", prot_options, "prot", "sel_protection")
+        if selected_protection:
+            filtered_options_df = filtered_options_df[filtered_options_df["Protection Type"].isin(selected_protection)]
+
+        # 3) Protection Action
+        pact_options = sorted(filtered_options_df["Protection Action"].dropna().unique())
+        selected_protection_action = multiselect_autoclose("Protection Action", pact_options, "pact", "sel_protection_action")
+        if selected_protection_action:
+            filtered_options_df = filtered_options_df[filtered_options_df["Protection Action"].isin(selected_protection_action)]
+
+        # 4) Software Version
+        sw_options = sorted(filtered_options_df["SoftWare Version"].dropna().unique())
+        selected_sw = multiselect_autoclose("Software Version", sw_options, "sw", "sel_sw")
+        if selected_sw:
+            filtered_options_df = filtered_options_df[filtered_options_df["SoftWare Version"].isin(selected_sw)]
+
+        # 5) System Mode
+        mode_options = sorted(filtered_options_df["System Mode"].dropna().unique())
+        selected_mode = multiselect_autoclose("System Mode", mode_options, "mode", "sel_mode")
+        if selected_mode:
+            filtered_options_df = filtered_options_df[filtered_options_df["System Mode"].isin(selected_mode)]
+
+        # 6) Uplink Service Type
+        uplink_options = sorted(filtered_options_df["Uplink Service Type"].dropna().unique())
+        selected_uplink = multiselect_autoclose("Uplink Service Type", uplink_options, "uplink", "sel_uplink")
+        if selected_uplink:
+            filtered_options_df = filtered_options_df[filtered_options_df["Uplink Service Type"].isin(selected_uplink)]
+
+        # 7) Client Service Type
+        client_options = sorted(filtered_options_df["Client Service Type"].dropna().unique())
+        selected_client = multiselect_autoclose("Client Service Type", client_options, "client", "sel_client")
+        if selected_client:
+            filtered_options_df = filtered_options_df[filtered_options_df["Client Service Type"].isin(selected_client)]
+
+        # 8) Transceiver PN
+        tpn_options = sorted(filtered_options_df["Transceiver PN"].dropna().unique())
+        selected_transceiver_pn = multiselect_autoclose("Transceiver PN", tpn_options, "tpn", "sel_tr_pn")
+        if selected_transceiver_pn:
+            filtered_options_df = filtered_options_df[filtered_options_df["Transceiver PN"].isin(selected_transceiver_pn)]
+
+        # 9) Transceiver FW
+        tfw_options = sorted(filtered_options_df["Transceiver FW"].dropna().unique())
+        selected_transceiver_fw = multiselect_autoclose("Transceiver FW", tfw_options, "tfw", "sel_tr_fw")
+        if selected_transceiver_fw:
+            filtered_options_df = filtered_options_df[filtered_options_df["Transceiver FW"].isin(selected_transceiver_fw)]
+
+        # 10) Time Stamp
         selected_timestamp = []
         if "Time Stamp" in filtered_options_df.columns:
             ts_options = sorted(filtered_options_df["Time Stamp"].dropna().unique(), reverse=True)
-            default_ts = [x for x in qp_get_list("ts") if x in ts_options]
-            selected_timestamp = st.multiselect("Date & Time", ts_options, default=default_ts, key=K("f_ts"))
+            selected_timestamp = multiselect_autoclose("Date & Time", ts_options, "ts", "sel_ts")
             if selected_timestamp:
                 filtered_options_df = filtered_options_df[filtered_options_df["Time Stamp"].isin(selected_timestamp)]
+
+
 
         # ---- Measurements filters (records-only) ----
         st.header("⏱️ W2P Filter (Only Full table)")
@@ -275,6 +352,7 @@ def sidebar_filters(df: pd.DataFrame):
 
     qp_set_list("prod",   selected_product)
     qp_set_list("prot",   selected_protection)
+    qp_set_list("pact", selected_protection_action)
     qp_set_list("sw",     selected_sw)
     qp_set_list("mode",   selected_mode)
     qp_set_list("uplink", selected_uplink)
@@ -282,7 +360,6 @@ def sidebar_filters(df: pd.DataFrame):
     qp_set_list("tpn",    selected_transceiver_pn)
     qp_set_list("tfw",    selected_transceiver_fw)
     qp_set_list("ts",     selected_timestamp)
-    qp_set_list("pact", selected_protection_action)
 
     qp_set_str("w2p_t", w2p_filter_type, default="Show All")
     qp_set_float("w2p_th", w2p_threshold, default=0.0)
@@ -295,6 +372,7 @@ def sidebar_filters(df: pd.DataFrame):
     base_filters = {
         "selected_product": selected_product,
         "selected_protection": selected_protection,
+        "selected_protection_action": selected_protection_action,
         "selected_sw": selected_sw,
         "selected_mode": selected_mode,
         "selected_uplink": selected_uplink,
@@ -302,7 +380,6 @@ def sidebar_filters(df: pd.DataFrame):
         "selected_transceiver_pn": selected_transceiver_pn,
         "selected_transceiver_fw": selected_transceiver_fw,
         "selected_timestamp": selected_timestamp,
-        "selected_protection_action": selected_protection_action
     }
 
     measurement_filters = {
@@ -451,6 +528,42 @@ def reorder_summary_like_full_table(summary_df: pd.DataFrame) -> pd.DataFrame:
     ordered = [c for c in wanted if c in summary_df.columns]
     leftovers = [c for c in summary_df.columns if c not in ordered]
     return summary_df[ordered + leftovers]
+
+# ==================================================================================
+
+def multiselect_autoclose(label: str, options: list, qp_key: str, state_key: str):
+    """
+    Multiselect that closes after any change by remounting (key changes).
+    Selected values are stored in st.session_state[state_key].
+    """
+    tok_key = f"__tok__{state_key}__rt{reset_token}"
+
+    if tok_key not in st.session_state:
+        st.session_state[tok_key] = 0
+    if state_key not in st.session_state:
+        st.session_state[state_key] = []
+
+    widget_key = f"{state_key}__w__rt{reset_token}__{st.session_state[tok_key]}"
+
+    # current selection (prefer stable state; on first load try query params)
+    current = st.session_state[state_key]
+    if not current:
+        qp_default = [x for x in qp_get_list(qp_key) if x in options]
+        if qp_default:
+            current = qp_default
+            st.session_state[state_key] = current
+
+    def _on_change():
+        st.session_state[state_key] = st.session_state.get(widget_key, [])
+        st.session_state[tok_key] += 1  # force remount => closes dropdown
+
+    return st.multiselect(
+        label,
+        options,
+        default=current,
+        key=widget_key,
+        on_change=_on_change
+    )
 
 
 # =========================================
