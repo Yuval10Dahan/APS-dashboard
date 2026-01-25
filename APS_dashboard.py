@@ -218,16 +218,6 @@ def sidebar_filters(df: pd.DataFrame):
                     filtered_options_df = filtered_options_df[filtered_options_df[col].isin(selected)]
             return selected
 
-        # ---- Base filters (shared) ----
-        # selected_product        = multisel("Product Name",        "Product Name",        "prod",   "f_product")
-        # selected_protection     = multisel("Protection Type",     "Protection Type",     "prot",   "f_protection")
-        # selected_sw             = multisel("SoftWare Version",    "Software Version",    "sw",     "f_sw")
-        # selected_mode           = multisel("System Mode",         "System Mode",         "mode",   "f_mode")
-        # selected_uplink         = multisel("Uplink Service Type", "Uplink Service Type", "uplink", "f_uplink")
-        # selected_client         = multisel("Client Service Type", "Client Service Type", "client", "f_client")
-        # selected_transceiver_pn = multisel("Transceiver PN",      "Transceiver PN",      "tpn",    "f_tr_pn")
-        # selected_transceiver_fw = multisel("Transceiver FW",      "Transceiver FW",      "tfw",    "f_tr_fw")
-        # selected_protection_action = multisel("Protection Action", "Protection Action",  "pact",  "f_protection_action")
 
         # ---- Base filters (shared) ----
         # 1) Product Name
@@ -687,26 +677,18 @@ def render_styled_html_table(styler, header_html_map: dict[str, str] | None = No
         font-size: 14px;
       }}
 
-    #   #summary_table_wrap th,
-    #   #summary_table_wrap td {{
-    #     padding: 8px 12px;
-    #     text-align: center;
-    #     white-space: nowrap;
-    #     font-family: inherit;
-    #   }}
-
       #summary_table_wrap th {{
         padding: 8px 12px;
         text-align: center;
         white-space: normal;      /* ✅ allow line breaks in headers */
         line-height: 1.2;
-    }}
+      }}
 
-    #summary_table_wrap td {{
+      #summary_table_wrap td {{
         padding: 8px 12px;
         text-align: center;
         white-space: nowrap;      /* ✅ keep data cells compact */
-    }}
+      }}
 
       #summary_table_wrap th {{
         font-weight: 700;
