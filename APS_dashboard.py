@@ -39,6 +39,7 @@ DISPLAY_COLUMNS_MAP = {
 CONFIG_COLS = [
     "Product Name",
     "Protection Type",
+    "Protection Action",
     "SoftWare Version",
     "System Mode",
     "Uplink Service Type",
@@ -56,6 +57,7 @@ FULL_TABLE_ORDER_ORIGINAL = [
     "W2P Measurement",
     "P2W Measurement",
     "Protection Type",
+    "Protection Action",
     "SoftWare Version",
     "System Mode",
     "Uplink Service Type",
