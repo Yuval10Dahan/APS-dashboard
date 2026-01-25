@@ -654,8 +654,12 @@ def style_summary_table(df: pd.DataFrame):
     return styler
 
 
-def render_styled_html_table(styler):
+def render_styled_html_table(styler, header_html_map: dict[str, str] | None = None):
     html = styler.to_html()
+
+    if header_html_map:
+        for old, new in header_html_map.items():
+            html = html.replace(f">{old}<", f">{new}<")
 
     wrapped = f"""
     <style>
@@ -683,26 +687,26 @@ def render_styled_html_table(styler):
         font-size: 14px;
       }}
 
-      #summary_table_wrap th,
-      #summary_table_wrap td {{
+    #   #summary_table_wrap th,
+    #   #summary_table_wrap td {{
+    #     padding: 8px 12px;
+    #     text-align: center;
+    #     white-space: nowrap;
+    #     font-family: inherit;
+    #   }}
+
+      #summary_table_wrap th {{
         padding: 8px 12px;
         text-align: center;
-        white-space: nowrap;
-        font-family: inherit;
-      }}
+        white-space: normal;      /* ✅ allow line breaks in headers */
+        line-height: 1.2;
+    }}
 
-    #   #summary_table_wrap th {{
-    #     padding: 8px 12px;
-    #     text-align: center;
-    #     white-space: normal;      /* ✅ allow line breaks in headers */
-    #     line-height: 1.2;
-    # }}
-
-    # #summary_table_wrap td {{
-    #     padding: 8px 12px;
-    #     text-align: center;
-    #     white-space: nowrap;      /* ✅ keep data cells compact */
-    # }}
+    #summary_table_wrap td {{
+        padding: 8px 12px;
+        text-align: center;
+        white-space: nowrap;      /* ✅ keep data cells compact */
+    }}
 
       #summary_table_wrap th {{
         font-weight: 700;
@@ -906,10 +910,9 @@ def render_records_section(summary_display_df: pd.DataFrame, records_display_df:
         if summary_df.empty:
             st.info("No summary available (missing configuration columns).")
         else:
-            shown = summary_df.rename(columns={
-                "SoftWare Version": "Software Version",
-                "Time Stamp": "Date & Time",
+            styled = style_summary_table(summary_df)
 
+            header_html_map = {
                 "Total Number of Measurements": "Total Number<br>of Measurements",
                 "W2P Below/Equal 50ms [%]": "W2P<br>Below/Equal<br>50ms [%]",
                 "W2P Above 50ms [%]": "W2P<br>Above<br>50ms [%]",
@@ -917,17 +920,26 @@ def render_records_section(summary_display_df: pd.DataFrame, records_display_df:
                 "P2W Above 50ms [%]": "P2W<br>Above<br>50ms [%]",
                 "W2P Link Down Alarm [%]": "W2P Link<br>Down Alarm [%]",
                 "P2W Link Down Alarm [%]": "P2W Link<br>Down Alarm [%]",
-            })
+            }
 
-            styled = style_summary_table(shown)
-            render_styled_html_table(styled)
+            render_styled_html_table(styled, header_html_map=header_html_map)
+
+            excel_df = summary_df.rename(columns={
+                "Total Number of Measurements": "Total Number\nof Measurements",
+                "W2P Below/Equal 50ms [%]": "W2P Below/Equal\n50ms [%]",
+                "W2P Above 50ms [%]": "W2P Above\n50ms [%]",
+                "P2W Below/Equal 50ms [%]": "P2W Below/Equal\n50ms [%]",
+                "P2W Above 50ms [%]": "P2W Above\n50ms [%]",
+                "W2P Link Down Alarm [%]": "W2P Link Down\nAlarm [%]",
+                "P2W Link Down Alarm [%]": "P2W Link Down\nAlarm [%]",
+                })
 
             comb_excel = df_to_excel_bytes(
-                shown,
+                excel_df,
                 sheet_name="Combinations",
                 logo_path=logo_path,
                 title="PacketLight APS Disruption Time Results (Combinations)"
-            )
+                )
             st.download_button(
                 "Download Combinations Results - Excel File",
                 data=comb_excel,
