@@ -1,8 +1,9 @@
 from sqlalchemy import create_engine, text
 import pandas as pd
 
-
-
+"""
+To run: open Terminal in this folder and run "py -3.8 side_functions.py"
+"""
 
 
 DB_PATH = "APS_data_base2.db"
@@ -17,7 +18,12 @@ DATES = ["09:45:35 25-01-2026",
          "12:20:44 11-01-2026",
          "16:48:51 10-08-2025",
          "20:43:51 10-08-2025",
-         "14:45:22 08-12-2025"]
+         "14:45:22 08-12-2025",
+         "19:58:00 08-01-2026",
+         "18:34:44 08-01-2026",
+         "17:19:58 08-01-2026",
+         "16:36:56 25-12-2025",
+         "17:31:31 15-12-2025"]
 
 
 def delete_by_row_ids(db_path, table_name, row_ids):
