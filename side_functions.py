@@ -9,6 +9,16 @@ DB_PATH = "APS_data_base2.db"
 TABLE = "Disruption Time Measurement"
 
 
+DATES = ["09:45:35 25-01-2026",
+         "11:44:27 12-01-2026",
+         "19:14:44 11-01-2026",
+         "18:58:05 11-01-2026",
+         "17:20:22 11-01-2026",
+         "12:20:44 11-01-2026",
+         "16:48:51 10-08-2025",
+         "20:43:51 10-08-2025",
+         "14:45:22 08-12-2025"]
+
 
 def delete_by_row_ids(db_path, table_name, row_ids):
     """
@@ -68,6 +78,6 @@ if __name__ == '__main__':
 
     # delete_by_row_ids(DB_PATH, TABLE, row_ids=id_list)
 
-
-    delete_by_timestamp(DB_PATH, TABLE, timestamp_value="12:16:13 12-01-2026")
+    for date in DATES:
+        delete_by_timestamp(DB_PATH, TABLE, timestamp_value=date)
     
