@@ -69,5 +69,5 @@ if __name__ == '__main__':
     # delete_by_row_ids(DB_PATH, TABLE, row_ids=id_list)
 
 
-    delete_by_timestamp(DB_PATH, TABLE, timestamp_value="19:29:26 08-01-2026")
+    delete_by_timestamp(DB_PATH, TABLE, timestamp_value="12:16:13 12-01-2026")
     
