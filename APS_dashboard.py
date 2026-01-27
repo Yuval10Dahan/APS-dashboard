@@ -198,6 +198,22 @@ def build_column_config_for_autowidth(df: pd.DataFrame, min_px=90, max_px=380, p
         cfg[col] = st.column_config.Column(width=width_px)
     return cfg
 
+def auto_width_from_content(df: pd.DataFrame, min_px=80, max_px=320):
+    """
+    Estimate column width based on longest string in column.
+    """
+    widths = {}
+
+    for col in df.columns:
+        max_len = max(
+            df[col].astype(str).map(len).max(),
+            len(str(col))
+        )
+        # heuristic: ~8px per character
+        px = int(max_len * 8)
+        widths[col] = max(min_px, min(px, max_px))
+
+    return widths
 
 def sidebar_filters(df: pd.DataFrame):
     with st.sidebar:
@@ -1003,14 +1019,22 @@ def render_records_section(summary_display_df: pd.DataFrame, records_display_df:
             comb_records_display = comb_records_original.rename(columns=DISPLAY_COLUMNS_MAP)
 
             table_df = comb_records_display[[c for c in selected_columns if c in comb_records_display.columns]].copy()
-            col_cfg = build_column_config_for_autowidth(table_df)
+            # col_cfg = build_column_config_for_autowidth(table_df)
+
+            # Compute content-based widths
+            col_widths = auto_width_from_content(table_df)
+
+            column_config = {
+                col: st.column_config.Column(width=f"{col_widths[col]}px")
+                for col in table_df.columns
+            }
 
             st.data_editor(
                 table_df,
-                use_container_width=True,
+                use_container_width=False,
                 hide_index=False,
                 disabled=True,
-                column_config=col_cfg
+                column_config=column_config
             )
 
             rec_excel = df_to_excel_bytes(
@@ -1020,7 +1044,7 @@ def render_records_section(summary_display_df: pd.DataFrame, records_display_df:
                 title=f"PacketLight APS Disruption Time Results - Combination {comb_id}"
             )
             st.download_button(
-                "Download Combination Results - Excel File",
+                "Download Combination Samples - Excel File",
                 data=rec_excel,
                 file_name=f"aps_results_combination_{comb_id}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
