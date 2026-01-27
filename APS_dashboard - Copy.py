@@ -39,6 +39,7 @@ DISPLAY_COLUMNS_MAP = {
 CONFIG_COLS = [
     "Product Name",
     "Protection Type",
+    "Protection Action",
     "SoftWare Version",
     "System Mode",
     "Uplink Service Type",
@@ -56,6 +57,7 @@ FULL_TABLE_ORDER_ORIGINAL = [
     "W2P Measurement",
     "P2W Measurement",
     "Protection Type",
+    "Protection Action",
     "SoftWare Version",
     "System Mode",
     "Uplink Service Type",
@@ -64,6 +66,19 @@ FULL_TABLE_ORDER_ORIGINAL = [
     "Transceiver FW",
     "Time Stamp",
     "_rowid_",
+]
+
+FILTER_KEYS = [
+    ("prod", "sel_product"),
+    ("prot", "sel_protection"),
+    ("pact", "sel_protection_action"),
+    ("sw", "sel_sw"),
+    ("mode", "sel_mode"),
+    ("uplink", "sel_uplink"),
+    ("client", "sel_client"),
+    ("tpn", "sel_tr_pn"),
+    ("tfw", "sel_tr_fw"),
+    ("ts", "sel_ts"),
 ]
 
 # =========================================
@@ -131,6 +146,13 @@ def _mark_reset():
 if st.session_state.get("_do_reset", False):
     st.session_state["_do_reset"] = False
     st.query_params.clear()
+
+    for _, state_key in FILTER_KEYS:
+        st.session_state.pop(state_key, None)
+        for k in list(st.session_state.keys()):
+            if k.startswith(f"__tok__{state_key}__"):
+                st.session_state.pop(k, None)
+
     st.session_state["reset_token"] += 1
     st.rerun()
 
@@ -176,6 +198,22 @@ def build_column_config_for_autowidth(df: pd.DataFrame, min_px=90, max_px=380, p
         cfg[col] = st.column_config.Column(width=width_px)
     return cfg
 
+def auto_width_from_content(df: pd.DataFrame, min_px=80, max_px=320):
+    """
+    Estimate column width based on longest string in column.
+    """
+    widths = {}
+
+    for col in df.columns:
+        max_len = max(
+            df[col].astype(str).map(len).max(),
+            len(str(col))
+        )
+        # heuristic: ~8px per character
+        px = int(max_len * 8)
+        widths[col] = max(min_px, min(px, max_px))
+
+    return widths
 
 def sidebar_filters(df: pd.DataFrame):
     with st.sidebar:
@@ -196,23 +234,71 @@ def sidebar_filters(df: pd.DataFrame):
                     filtered_options_df = filtered_options_df[filtered_options_df[col].isin(selected)]
             return selected
 
-        # ---- Base filters (shared) ----
-        selected_product        = multisel("Product Name",        "Product Name",        "prod",   "f_product")
-        selected_protection     = multisel("Protection Type",     "Protection Type",     "prot",   "f_protection")
-        selected_sw             = multisel("SoftWare Version",    "Software Version",    "sw",     "f_sw")
-        selected_mode           = multisel("System Mode",         "System Mode",         "mode",   "f_mode")
-        selected_uplink         = multisel("Uplink Service Type", "Uplink Service Type", "uplink", "f_uplink")
-        selected_client         = multisel("Client Service Type", "Client Service Type", "client", "f_client")
-        selected_transceiver_pn = multisel("Transceiver PN",      "Transceiver PN",      "tpn",    "f_tr_pn")
-        selected_transceiver_fw = multisel("Transceiver FW",      "Transceiver FW",      "tfw",    "f_tr_fw")
 
+        # ---- Base filters (shared) ----
+        # 1) Product Name
+        product_options = sorted(filtered_options_df["Product Name"].dropna().unique())
+        selected_product = multiselect_autoclose("Product Name", product_options, "prod", "sel_product")
+        if selected_product:
+            filtered_options_df = filtered_options_df[filtered_options_df["Product Name"].isin(selected_product)]
+
+        # 2) Protection Type
+        prot_options = sorted(filtered_options_df["Protection Type"].dropna().unique())
+        selected_protection = multiselect_autoclose("Protection Type", prot_options, "prot", "sel_protection")
+        if selected_protection:
+            filtered_options_df = filtered_options_df[filtered_options_df["Protection Type"].isin(selected_protection)]
+
+        # 3) Protection Action
+        pact_options = sorted(filtered_options_df["Protection Action"].dropna().unique())
+        selected_protection_action = multiselect_autoclose("Protection Action", pact_options, "pact", "sel_protection_action")
+        if selected_protection_action:
+            filtered_options_df = filtered_options_df[filtered_options_df["Protection Action"].isin(selected_protection_action)]
+
+        # 4) Software Version
+        sw_options = sorted(filtered_options_df["SoftWare Version"].dropna().unique())
+        selected_sw = multiselect_autoclose("Software Version", sw_options, "sw", "sel_sw")
+        if selected_sw:
+            filtered_options_df = filtered_options_df[filtered_options_df["SoftWare Version"].isin(selected_sw)]
+
+        # 5) System Mode
+        mode_options = sorted(filtered_options_df["System Mode"].dropna().unique())
+        selected_mode = multiselect_autoclose("System Mode", mode_options, "mode", "sel_mode")
+        if selected_mode:
+            filtered_options_df = filtered_options_df[filtered_options_df["System Mode"].isin(selected_mode)]
+
+        # 6) Uplink Service Type
+        uplink_options = sorted(filtered_options_df["Uplink Service Type"].dropna().unique())
+        selected_uplink = multiselect_autoclose("Uplink Service Type", uplink_options, "uplink", "sel_uplink")
+        if selected_uplink:
+            filtered_options_df = filtered_options_df[filtered_options_df["Uplink Service Type"].isin(selected_uplink)]
+
+        # 7) Client Service Type
+        client_options = sorted(filtered_options_df["Client Service Type"].dropna().unique())
+        selected_client = multiselect_autoclose("Client Service Type", client_options, "client", "sel_client")
+        if selected_client:
+            filtered_options_df = filtered_options_df[filtered_options_df["Client Service Type"].isin(selected_client)]
+
+        # 8) Transceiver PN
+        tpn_options = sorted(filtered_options_df["Transceiver PN"].dropna().unique())
+        selected_transceiver_pn = multiselect_autoclose("Transceiver PN", tpn_options, "tpn", "sel_tr_pn")
+        if selected_transceiver_pn:
+            filtered_options_df = filtered_options_df[filtered_options_df["Transceiver PN"].isin(selected_transceiver_pn)]
+
+        # 9) Transceiver FW
+        tfw_options = sorted(filtered_options_df["Transceiver FW"].dropna().unique())
+        selected_transceiver_fw = multiselect_autoclose("Transceiver FW", tfw_options, "tfw", "sel_tr_fw")
+        if selected_transceiver_fw:
+            filtered_options_df = filtered_options_df[filtered_options_df["Transceiver FW"].isin(selected_transceiver_fw)]
+
+        # 10) Time Stamp
         selected_timestamp = []
         if "Time Stamp" in filtered_options_df.columns:
             ts_options = sorted(filtered_options_df["Time Stamp"].dropna().unique(), reverse=True)
-            default_ts = [x for x in qp_get_list("ts") if x in ts_options]
-            selected_timestamp = st.multiselect("Date & Time", ts_options, default=default_ts, key=K("f_ts"))
+            selected_timestamp = multiselect_autoclose("Date & Time", ts_options, "ts", "sel_ts")
             if selected_timestamp:
                 filtered_options_df = filtered_options_df[filtered_options_df["Time Stamp"].isin(selected_timestamp)]
+
+
 
         # ---- Measurements filters (records-only) ----
         st.header("⏱️ W2P Filter (Only Full table)")
@@ -254,24 +340,45 @@ def sidebar_filters(df: pd.DataFrame):
         )
 
         # ---- Columns ----
+        DEFAULT_FULL_TABLE_COLUMNS = [
+            "Sample Number",
+            "W2P (ms)",
+            "P2W (ms)",
+            "W2P Link Down Alarm",
+            "P2W Link Down Alarm"
+        ]
+        
+        FULL_TABLE_COL_KEY = "full_table_selected_columns"
+
+        if FULL_TABLE_COL_KEY not in st.session_state:
+            st.session_state[FULL_TABLE_COL_KEY] = DEFAULT_FULL_TABLE_COLUMNS.copy()
+
+
         st.header("🧩 Columns to Display (Only Full table)")
         st.caption("Toggle columns on/off for the FULL table view:")
         display_df_preview = df.rename(columns=DISPLAY_COLUMNS_MAP)
 
         all_cols = list(display_df_preview.columns)
-        cols_from_qp = qp_get_list("cols")
-        cols_default = [c for c in cols_from_qp if c in all_cols] if cols_from_qp else all_cols
-        if not cols_default:
-            cols_default = all_cols
+
+        # Start from saved session_state selection, but keep only valid columns
+        saved = [c for c in st.session_state[FULL_TABLE_COL_KEY] if c in all_cols]
 
         checkbox_columns = {}
         for col in all_cols:
-            checkbox_columns[col] = st.checkbox(col, value=(col in cols_default), key=K(f"col_{col}"))
+            checkbox_columns[col] = st.checkbox(
+                col,
+                value=(col in saved),
+                key=K(f"col_{col}")
+            )
 
         selected_columns = [col for col, show in checkbox_columns.items() if show]
 
+        # Persist the user's selection
+        st.session_state[FULL_TABLE_COL_KEY] = selected_columns
+
     qp_set_list("prod",   selected_product)
     qp_set_list("prot",   selected_protection)
+    qp_set_list("pact", selected_protection_action)
     qp_set_list("sw",     selected_sw)
     qp_set_list("mode",   selected_mode)
     qp_set_list("uplink", selected_uplink)
@@ -291,6 +398,7 @@ def sidebar_filters(df: pd.DataFrame):
     base_filters = {
         "selected_product": selected_product,
         "selected_protection": selected_protection,
+        "selected_protection_action": selected_protection_action,
         "selected_sw": selected_sw,
         "selected_mode": selected_mode,
         "selected_uplink": selected_uplink,
@@ -327,6 +435,7 @@ def apply_base_filters(df: pd.DataFrame, f: dict) -> pd.DataFrame:
     apply_in("Transceiver PN", f["selected_transceiver_pn"])
     apply_in("Transceiver FW", f["selected_transceiver_fw"])
     apply_in("Time Stamp", f["selected_timestamp"])
+    apply_in("Protection Action", f["selected_protection_action"])
 
     return out
 
@@ -368,6 +477,18 @@ def calc_distribution(series: pd.Series) -> dict:
         "Total Number of Measurements": total,
     }
 
+def calc_alarm_percentage(series: pd.Series) -> float:
+    """
+    Calculates percentage of '1' values in a binary alarm column.
+    1 = alarm happened
+    0 = alarm did not happen
+    """
+    s = pd.to_numeric(series, errors="coerce").dropna()
+    total = len(s)
+    if total == 0:
+        return 0.0
+    return (s == 1).sum() / total * 100.0
+
 
 def build_summary_table(filtered_df_original_names: pd.DataFrame) -> pd.DataFrame:
     cols_present = [c for c in CONFIG_COLS if c in filtered_df_original_names.columns]
@@ -385,11 +506,18 @@ def build_summary_table(filtered_df_original_names: pd.DataFrame) -> pd.DataFram
         w2p_dist = calc_distribution(g.get("W2P Measurement"))
         p2w_dist = calc_distribution(g.get("P2W Measurement"))
 
+        w2p_alarm_pct = calc_alarm_percentage(g.get("W2P Link Down Alarm"))
+        p2w_alarm_pct = calc_alarm_percentage(g.get("P2W Link Down Alarm"))
+
         row.update({
             "W2P Below/Equal 50ms [%]": w2p_dist["Below/Equal 50mSec [%]"],
             "W2P Above 50ms [%]": w2p_dist["Above 50mSec [%]"],
             "P2W Below/Equal 50ms [%]": p2w_dist["Below/Equal 50mSec [%]"],
             "P2W Above 50ms [%]": p2w_dist["Above 50mSec [%]"],
+
+            "W2P Link Down Alarm [%]": w2p_alarm_pct,
+            "P2W Link Down Alarm [%]": p2w_alarm_pct,
+            
             "Total Number of Measurements": int(len(g)),
         })
         rows.append(row)
@@ -411,8 +539,20 @@ def reorder_summary_like_full_table(summary_df: pd.DataFrame) -> pd.DataFrame:
 
     slot_map = {
         "Number": ["Total Number of Measurements"],
-        "W2P Measurement": ["W2P Below/Equal 50ms [%]", "W2P Above 50ms [%]"],
-        "P2W Measurement": ["P2W Below/Equal 50ms [%]", "P2W Above 50ms [%]"],
+
+        "W2P Measurement": [
+            "W2P Below/Equal 50ms [%]",
+            "W2P Above 50ms [%]",
+        ],
+
+        "P2W Measurement": [
+            "P2W Below/Equal 50ms [%]",
+            "P2W Above 50ms [%]",
+
+            "W2P Link Down Alarm [%]",
+            "P2W Link Down Alarm [%]",
+        ],
+
         "_rowid_": [],
     }
 
@@ -426,6 +566,42 @@ def reorder_summary_like_full_table(summary_df: pd.DataFrame) -> pd.DataFrame:
     ordered = [c for c in wanted if c in summary_df.columns]
     leftovers = [c for c in summary_df.columns if c not in ordered]
     return summary_df[ordered + leftovers]
+
+# ==================================================================================
+
+def multiselect_autoclose(label: str, options: list, qp_key: str, state_key: str):
+    """
+    Multiselect that closes after any change by remounting (key changes).
+    Selected values are stored in st.session_state[state_key].
+    """
+    tok_key = f"__tok__{state_key}__rt{reset_token}"
+
+    if tok_key not in st.session_state:
+        st.session_state[tok_key] = 0
+    if state_key not in st.session_state:
+        st.session_state[state_key] = []
+
+    widget_key = f"{state_key}__w__rt{reset_token}__{st.session_state[tok_key]}"
+
+    # current selection (prefer stable state; on first load try query params)
+    current = st.session_state[state_key]
+    if not current:
+        qp_default = [x for x in qp_get_list(qp_key) if x in options]
+        if qp_default:
+            current = qp_default
+            st.session_state[state_key] = current
+
+    def _on_change():
+        st.session_state[state_key] = st.session_state.get(widget_key, [])
+        st.session_state[tok_key] += 1  # force remount => closes dropdown
+
+    return st.multiselect(
+        label,
+        options,
+        default=current,
+        key=widget_key,
+        on_change=_on_change
+    )
 
 
 # =========================================
@@ -476,7 +652,17 @@ def style_summary_table(df: pd.DataFrame):
 
         return styles
 
-    styler = df.style.apply(_apply, axis=1).format(precision=4)
+    percent_cols = [
+        "W2P Below/Equal 50ms [%]",
+        "W2P Above 50ms [%]",
+        "P2W Below/Equal 50ms [%]",
+        "P2W Above 50ms [%]",
+        "W2P Link Down Alarm [%]",
+        "P2W Link Down Alarm [%]",
+        ]
+
+    fmt = {c: "{:.2f}%" for c in percent_cols if c in df.columns}
+    styler = (df.style.apply(_apply, axis=1).format(fmt))
 
     # divider between W2P block and P2W block
     if w2p_a in df.columns and p2w_b in df.columns:
@@ -494,8 +680,12 @@ def style_summary_table(df: pd.DataFrame):
     return styler
 
 
-def render_styled_html_table(styler):
+def render_styled_html_table(styler, header_html_map: dict[str, str] | None = None):
     html = styler.to_html()
+
+    if header_html_map:
+        for old, new in header_html_map.items():
+            html = html.replace(f">{old}<", f">{new}<")
 
     wrapped = f"""
     <style>
@@ -523,12 +713,17 @@ def render_styled_html_table(styler):
         font-size: 14px;
       }}
 
-      #summary_table_wrap th,
+      #summary_table_wrap th {{
+        padding: 8px 12px;
+        text-align: center;
+        white-space: normal;      /* ✅ allow line breaks in headers */
+        line-height: 1.2;
+      }}
+
       #summary_table_wrap td {{
         padding: 8px 12px;
         text-align: center;
-        white-space: nowrap;
-        font-family: inherit;
+        white-space: nowrap;      /* ✅ keep data cells compact */
       }}
 
       #summary_table_wrap th {{
@@ -712,7 +907,7 @@ def render_graph_by_combination_id(base_filtered_original_df: pd.DataFrame, summ
             st.dataframe(plot_df[["Number", "W2P Measurement", "P2W Measurement"]], use_container_width=True)
 
 
-def render_records_section(summary_display_df: pd.DataFrame, records_display_df: pd.DataFrame, selected_columns: list[str], logo_path: str):
+def render_records_section(summary_display_df: pd.DataFrame, records_display_df: pd.DataFrame, records_original_df: pd.DataFrame, selected_columns: list[str], logo_path: str):
     st.divider()
 
     base_original_df = summary_display_df.rename(columns={v: k for k, v in DISPLAY_COLUMNS_MAP.items()})
@@ -733,20 +928,36 @@ def render_records_section(summary_display_df: pd.DataFrame, records_display_df:
         if summary_df.empty:
             st.info("No summary available (missing configuration columns).")
         else:
-            shown = summary_df.rename(columns={
-                "SoftWare Version": "Software Version",
-                "Time Stamp": "Date & Time",
-            })
+            styled = style_summary_table(summary_df)
 
-            styled = style_summary_table(shown)
-            render_styled_html_table(styled)
+            header_html_map = {
+                "Total Number of Measurements": "Total Number<br>of Measurements",
+                "W2P Below/Equal 50ms [%]": "W2P<br>Below/Equal<br>50ms [%]",
+                "W2P Above 50ms [%]": "W2P<br>Above<br>50ms [%]",
+                "P2W Below/Equal 50ms [%]": "P2W<br>Below/Equal<br>50ms [%]",
+                "P2W Above 50ms [%]": "P2W<br>Above<br>50ms [%]",
+                "W2P Link Down Alarm [%]": "W2P Link<br>Down Alarm [%]",
+                "P2W Link Down Alarm [%]": "P2W Link<br>Down Alarm [%]",
+            }
+
+            render_styled_html_table(styled, header_html_map=header_html_map)
+
+            excel_df = summary_df.rename(columns={
+                "Total Number of Measurements": "Total Number\nof Measurements",
+                "W2P Below/Equal 50ms [%]": "W2P Below/Equal\n50ms [%]",
+                "W2P Above 50ms [%]": "W2P Above\n50ms [%]",
+                "P2W Below/Equal 50ms [%]": "P2W Below/Equal\n50ms [%]",
+                "P2W Above 50ms [%]": "P2W Above\n50ms [%]",
+                "W2P Link Down Alarm [%]": "W2P Link Down\nAlarm [%]",
+                "P2W Link Down Alarm [%]": "P2W Link Down\nAlarm [%]",
+                })
 
             comb_excel = df_to_excel_bytes(
-                shown,
+                excel_df,
                 sheet_name="Combinations",
                 logo_path=logo_path,
                 title="PacketLight APS Disruption Time Results (Combinations)"
-            )
+                )
             st.download_button(
                 "Download Combinations Results - Excel File",
                 data=comb_excel,
@@ -756,34 +967,88 @@ def render_records_section(summary_display_df: pd.DataFrame, records_display_df:
             )
 
     with tab_full:
-        st.subheader(f"Showing {len(records_display_df)} Records")
+        st.subheader("Show Measurements by Combination ID")
 
-        if len(records_display_df) == 0:
-            st.info("No records to display.")
+        if summary_df.empty:
+            st.info("No combinations available.")
+            return base_original_df, summary_df
+
+        max_id = int(summary_df["Combination ID"].max())
+
+        comb_default = int(qp_get_float("cid_full", 1.0))
+        comb_default = min(max(1, comb_default), max_id)
+
+        c1, c2 = st.columns([1, 3])
+        with c1:
+            comb_id = st.number_input(
+                "Combination ID",
+                min_value=1,
+                max_value=max_id,
+                value=comb_default,
+                step=1,
+                key=K("full_comb_id_input"),
+            )
+        qp_set_float("cid_full", float(comb_id), default=1.0)
+
+        # Find the combination row in the summary table
+        row = summary_df.loc[summary_df["Combination ID"] == int(comb_id)]
+        if row.empty:
+            st.error(f"Combination ID {comb_id} not found.")
+            return base_original_df, summary_df
+        row0 = row.iloc[0]
+
+        # Build mask by configuration columns (same logic as your graph function)
+        cfg_cols_present = [c for c in CONFIG_COLS if c in records_original_df.columns and c in summary_df.columns]
+
+        mask = pd.Series(True, index=records_original_df.index)
+        for c in cfg_cols_present:
+            v = row0[c]
+            if pd.isna(v):
+                mask &= records_original_df[c].isna()
+            else:
+                mask &= (records_original_df[c] == v)
+
+        comb_records_original = records_original_df.loc[mask].copy()
+
+        st.subheader(f"Showing {len(comb_records_original)} Records (Combination ID {comb_id})")
+
+        if comb_records_original.empty:
+            st.info("No records to display for this combination (after current filters).")
         else:
-            table_df = records_display_df[[c for c in selected_columns if c in records_display_df.columns]].copy()
-            col_cfg = build_column_config_for_autowidth(table_df)
+            # convert to display names (same as before)
+            comb_records_display = comb_records_original.rename(columns=DISPLAY_COLUMNS_MAP)
+
+            table_df = comb_records_display[[c for c in selected_columns if c in comb_records_display.columns]].copy()
+            # col_cfg = build_column_config_for_autowidth(table_df)
+
+            # Compute content-based widths
+            col_widths = auto_width_from_content(table_df)
+
+            column_config = {
+                col: st.column_config.Column(width=f"{col_widths[col]}px")
+                for col in table_df.columns
+            }
 
             st.data_editor(
                 table_df,
-                use_container_width=True,
+                use_container_width=False,
                 hide_index=False,
                 disabled=True,
-                column_config=col_cfg
+                column_config=column_config
             )
 
             rec_excel = df_to_excel_bytes(
                 table_df,
                 sheet_name="APS Results",
                 logo_path=logo_path,
-                title="PacketLight APS Disruption Time Results"
+                title=f"PacketLight APS Disruption Time Results - Combination {comb_id}"
             )
             st.download_button(
-                "Download Filtered Results - Excel File",
+                "Download Combination Samples - Excel File",
                 data=rec_excel,
-                file_name="aps_results.xlsx",
+                file_name=f"aps_results_combination_{comb_id}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key=K("dl_records"),
+                key=K("dl_records_comb"),
             )
 
     return base_original_df, summary_df
@@ -814,6 +1079,7 @@ selected_columns = [c for c in selected_columns if c in records_display_df.colum
 base_original_df_for_graph, summary_df_original = render_records_section(
     summary_display_df=summary_display_df,
     records_display_df=records_display_df,
+    records_original_df=records_filtered_df,
     selected_columns=selected_columns,
     logo_path=logo_path
 )
