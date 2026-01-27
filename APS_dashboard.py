@@ -871,7 +871,7 @@ def render_graph_by_combination_id(base_filtered_original_df: pd.DataFrame, summ
             st.dataframe(plot_df[["Number", "W2P Measurement", "P2W Measurement"]], use_container_width=True)
 
 
-def render_records_section(summary_display_df: pd.DataFrame, records_display_df: pd.DataFrame, selected_columns: list[str], logo_path: str):
+def render_records_section(summary_display_df: pd.DataFrame, records_display_df: pd.DataFrame, records_original_df: pd.DataFrame, selected_columns: list[str], logo_path: str):
     st.divider()
 
     base_original_df = summary_display_df.rename(columns={v: k for k, v in DISPLAY_COLUMNS_MAP.items()})
@@ -931,12 +931,58 @@ def render_records_section(summary_display_df: pd.DataFrame, records_display_df:
             )
 
     with tab_full:
-        st.subheader(f"Showing {len(records_display_df)} Records")
+        st.subheader("Show Measurements by Combination ID")
 
-        if len(records_display_df) == 0:
-            st.info("No records to display.")
+        if summary_df.empty:
+            st.info("No combinations available.")
+            return base_original_df, summary_df
+
+        max_id = int(summary_df["Combination ID"].max())
+
+        comb_default = int(qp_get_float("cid_full", 1.0))
+        comb_default = min(max(1, comb_default), max_id)
+
+        c1, c2 = st.columns([1, 3])
+        with c1:
+            comb_id = st.number_input(
+                "Combination ID",
+                min_value=1,
+                max_value=max_id,
+                value=comb_default,
+                step=1,
+                key=K("full_comb_id_input"),
+            )
+        qp_set_float("cid_full", float(comb_id), default=1.0)
+
+        # Find the combination row in the summary table
+        row = summary_df.loc[summary_df["Combination ID"] == int(comb_id)]
+        if row.empty:
+            st.error(f"Combination ID {comb_id} not found.")
+            return base_original_df, summary_df
+        row0 = row.iloc[0]
+
+        # Build mask by configuration columns (same logic as your graph function)
+        cfg_cols_present = [c for c in CONFIG_COLS if c in records_original_df.columns and c in summary_df.columns]
+
+        mask = pd.Series(True, index=records_original_df.index)
+        for c in cfg_cols_present:
+            v = row0[c]
+            if pd.isna(v):
+                mask &= records_original_df[c].isna()
+            else:
+                mask &= (records_original_df[c] == v)
+
+        comb_records_original = records_original_df.loc[mask].copy()
+
+        st.subheader(f"Showing {len(comb_records_original)} Records (Combination ID {comb_id})")
+
+        if comb_records_original.empty:
+            st.info("No records to display for this combination (after current filters).")
         else:
-            table_df = records_display_df[[c for c in selected_columns if c in records_display_df.columns]].copy()
+            # convert to display names (same as before)
+            comb_records_display = comb_records_original.rename(columns=DISPLAY_COLUMNS_MAP)
+
+            table_df = comb_records_display[[c for c in selected_columns if c in comb_records_display.columns]].copy()
             col_cfg = build_column_config_for_autowidth(table_df)
 
             st.data_editor(
@@ -951,14 +997,14 @@ def render_records_section(summary_display_df: pd.DataFrame, records_display_df:
                 table_df,
                 sheet_name="APS Results",
                 logo_path=logo_path,
-                title="PacketLight APS Disruption Time Results"
+                title=f"PacketLight APS Disruption Time Results - Combination {comb_id}"
             )
             st.download_button(
-                "Download Filtered Results - Excel File",
+                "Download Combination Results - Excel File",
                 data=rec_excel,
-                file_name="aps_results.xlsx",
+                file_name=f"aps_results_combination_{comb_id}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key=K("dl_records"),
+                key=K("dl_records_comb"),
             )
 
     return base_original_df, summary_df
@@ -989,6 +1035,7 @@ selected_columns = [c for c in selected_columns if c in records_display_df.colum
 base_original_df_for_graph, summary_df_original = render_records_section(
     summary_display_df=summary_display_df,
     records_display_df=records_display_df,
+    records_original_df=records_filtered_df,
     selected_columns=selected_columns,
     logo_path=logo_path
 )
