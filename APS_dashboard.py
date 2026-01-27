@@ -738,22 +738,13 @@ def render_styled_html_table(
     compact: bool = False,
     height: int = 520
 ):
-    """
-    Renders a pandas Styler as an HTML table with internal scrollbars.
-    - header_html_map: optional header replacements (supports <br>)
-    - compact:
-        True  -> table width fits content (no forced min-width 100%)
-        False -> table fills container width at minimum (your old behavior)
-    - height: fixed height for the scroll container + iframe
-    """
     html = styler.to_html()
 
     if header_html_map:
         for old, new in header_html_map.items():
             html = html.replace(f">{old}<", f">{new}<")
 
-    # If compact=True, don't stretch to container width (reduces empty whitespace).
-    # If compact=False, keep old behavior (fill at least full width).
+    # compact => don't stretch to full width
     min_width_css = "min-width: 0;" if compact else "min-width: 100%;"
 
     wrapped = f"""
@@ -761,19 +752,25 @@ def render_styled_html_table(
       html, body {{
         margin: 0;
         padding: 0;
-        width: 100%;
       }}
 
-      /* Scroll container */
-      #summary_table_wrap {{
+      /* Outer area fills the iframe */
+      #wrap_outer {{
         width: 100%;
+        box-sizing: border-box;
+      }}
+
+      /* ✅ This is the real scroller, and it SHRINKS to table width */
+      #wrap_scroller {{
+        display: inline-block;   /* shrink to content width */
+        max-width: 100%;         /* but never exceed iframe width */
         height: {height}px;
-        overflow: auto;
+        overflow: auto;          /* vertical + horizontal scroll */
         box-sizing: border-box;
       }}
 
       /* Table sizing */
-      #summary_table_wrap table {{
+      #wrap_scroller table {{
         border-collapse: collapse;
         width: max-content;
         {min_width_css}
@@ -782,7 +779,7 @@ def render_styled_html_table(
         font-size: 14px;
       }}
 
-      #summary_table_wrap th {{
+      #wrap_scroller th {{
         padding: 8px 12px;
         text-align: center;
         white-space: normal;
@@ -790,19 +787,20 @@ def render_styled_html_table(
         font-weight: 700;
       }}
 
-      #summary_table_wrap td {{
+      #wrap_scroller td {{
         padding: 8px 12px;
         text-align: center;
         white-space: nowrap;
       }}
     </style>
 
-    <div id="summary_table_wrap">
-      {html}
+    <div id="wrap_outer">
+      <div id="wrap_scroller">
+        {html}
+      </div>
     </div>
     """
 
-    # iframe should NOT scroll; inner div scrolls
     components.html(wrapped, height=height, scrolling=False)
 
 
