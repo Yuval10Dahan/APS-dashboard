@@ -81,6 +81,16 @@ FILTER_KEYS = [
     ("ts", "sel_ts"),
 ]
 
+DEFAULT_FULL_TABLE_COLUMNS = [
+    "Sample Number",
+    "W2P (ms)",
+    "P2W (ms)",
+    "W2P Link Down Alarm",
+    "P2W Link Down Alarm"
+]
+        
+FULL_TABLE_COL_KEY = "full_table_selected_columns"
+
 # =========================================
 # Query Params helpers (persist across F5)
 # =========================================
@@ -146,6 +156,10 @@ def _mark_reset():
 if st.session_state.get("_do_reset", False):
     st.session_state["_do_reset"] = False
     st.query_params.clear()
+
+    # --- Reset columns to defaults (and persist across F5 via query params) ---
+    st.session_state.pop(FULL_TABLE_COL_KEY, None)
+    qp_set_list("cols", DEFAULT_FULL_TABLE_COLUMNS)
 
     for _, state_key in FILTER_KEYS:
         st.session_state.pop(state_key, None)
@@ -340,18 +354,11 @@ def sidebar_filters(df: pd.DataFrame):
         )
 
         # ---- Columns ----
-        DEFAULT_FULL_TABLE_COLUMNS = [
-            "Sample Number",
-            "W2P (ms)",
-            "P2W (ms)",
-            "W2P Link Down Alarm",
-            "P2W Link Down Alarm"
-        ]
-        
-        FULL_TABLE_COL_KEY = "full_table_selected_columns"
-
         if FULL_TABLE_COL_KEY not in st.session_state:
-            st.session_state[FULL_TABLE_COL_KEY] = DEFAULT_FULL_TABLE_COLUMNS.copy()
+            # Restore from URL (persists across F5). If not present -> use defaults.
+            qp_cols = qp_get_list("cols")
+            initial = qp_cols if qp_cols else DEFAULT_FULL_TABLE_COLUMNS
+            st.session_state[FULL_TABLE_COL_KEY] = initial.copy()
 
 
         st.header("🧩 Columns to Display (Only Full table)")
