@@ -324,21 +324,41 @@ def sidebar_filters(df: pd.DataFrame):
         )
 
         # ---- Columns ----
+        DEFAULT_FULL_TABLE_COLUMNS = [
+            "Sample Number",
+            "W2P (ms)",
+            "P2W (ms)",
+            "W2P Link Down Alarm",
+            "P2W Link Down Alarm"
+        ]
+        
+        FULL_TABLE_COL_KEY = "full_table_selected_columns"
+
+        if FULL_TABLE_COL_KEY not in st.session_state:
+            st.session_state[FULL_TABLE_COL_KEY] = DEFAULT_FULL_TABLE_COLUMNS.copy()
+
+
         st.header("🧩 Columns to Display (Only Full table)")
         st.caption("Toggle columns on/off for the FULL table view:")
         display_df_preview = df.rename(columns=DISPLAY_COLUMNS_MAP)
 
         all_cols = list(display_df_preview.columns)
-        cols_from_qp = qp_get_list("cols")
-        cols_default = [c for c in cols_from_qp if c in all_cols] if cols_from_qp else all_cols
-        if not cols_default:
-            cols_default = all_cols
+
+        # Start from saved session_state selection, but keep only valid columns
+        saved = [c for c in st.session_state[FULL_TABLE_COL_KEY] if c in all_cols]
 
         checkbox_columns = {}
         for col in all_cols:
-            checkbox_columns[col] = st.checkbox(col, value=(col in cols_default), key=K(f"col_{col}"))
+            checkbox_columns[col] = st.checkbox(
+                col,
+                value=(col in saved),
+                key=K(f"col_{col}")
+            )
 
         selected_columns = [col for col, show in checkbox_columns.items() if show]
+
+        # Persist the user's selection
+        st.session_state[FULL_TABLE_COL_KEY] = selected_columns
 
     qp_set_list("prod",   selected_product)
     qp_set_list("prot",   selected_protection)
