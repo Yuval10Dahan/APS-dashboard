@@ -81,6 +81,16 @@ FILTER_KEYS = [
     ("ts", "sel_ts"),
 ]
 
+DEFAULT_FULL_TABLE_COLUMNS = [
+    "Sample Number",
+    "W2P (ms)",
+    "P2W (ms)",
+    "W2P Link Down Alarm",
+    "P2W Link Down Alarm"
+]
+        
+FULL_TABLE_COL_KEY = "full_table_selected_columns"
+
 # =========================================
 # Query Params helpers (persist across F5)
 # =========================================
@@ -146,6 +156,10 @@ def _mark_reset():
 if st.session_state.get("_do_reset", False):
     st.session_state["_do_reset"] = False
     st.query_params.clear()
+
+    # --- Reset columns to defaults (and persist across F5 via query params) ---
+    st.session_state.pop(FULL_TABLE_COL_KEY, None)
+    qp_set_list("cols", DEFAULT_FULL_TABLE_COLUMNS)
 
     for _, state_key in FILTER_KEYS:
         st.session_state.pop(state_key, None)
@@ -340,18 +354,11 @@ def sidebar_filters(df: pd.DataFrame):
         )
 
         # ---- Columns ----
-        DEFAULT_FULL_TABLE_COLUMNS = [
-            "Sample Number",
-            "W2P (ms)",
-            "P2W (ms)",
-            "W2P Link Down Alarm",
-            "P2W Link Down Alarm"
-        ]
-        
-        FULL_TABLE_COL_KEY = "full_table_selected_columns"
-
         if FULL_TABLE_COL_KEY not in st.session_state:
-            st.session_state[FULL_TABLE_COL_KEY] = DEFAULT_FULL_TABLE_COLUMNS.copy()
+            # Restore from URL (persists across F5). If not present -> use defaults.
+            qp_cols = qp_get_list("cols")
+            initial = qp_cols if qp_cols else DEFAULT_FULL_TABLE_COLUMNS
+            st.session_state[FULL_TABLE_COL_KEY] = initial.copy()
 
 
         st.header("🧩 Columns to Display (Only Full table)")
@@ -679,65 +686,129 @@ def style_summary_table(df: pd.DataFrame):
 
     return styler
 
+def style_full_table_records(df: pd.DataFrame):
+    """
+    Red highlight rules:
+    - W2P (ms) > 50
+    - P2W (ms) > 50
+    - W2P Link Down Alarm == 1
+    - P2W Link Down Alarm == 1
+    """
+    RED_BG = "background-color:#FFC7CE; color:#9C0006; font-weight:700;"
 
-def render_styled_html_table(styler, header_html_map: dict[str, str] | None = None):
+    def _apply(row: pd.Series):
+        styles = [""] * len(row.index)
+        idx = {c: i for i, c in enumerate(row.index)}
+
+        def mark(col_name):
+            if col_name in idx:
+                styles[idx[col_name]] = RED_BG
+
+        # W2P > 50
+        if "W2P (ms)" in row.index:
+            try:
+                if float(row["W2P (ms)"]) > 50:
+                    mark("W2P (ms)")
+            except Exception:
+                pass
+
+        # P2W > 50
+        if "P2W (ms)" in row.index:
+            try:
+                if float(row["P2W (ms)"]) > 50:
+                    mark("P2W (ms)")
+            except Exception:
+                pass
+
+        # Alarms == 1
+        if "W2P Link Down Alarm" in row.index:
+            try:
+                if int(float(row["W2P Link Down Alarm"])) == 1:
+                    mark("W2P Link Down Alarm")
+            except Exception:
+                pass
+
+        if "P2W Link Down Alarm" in row.index:
+            try:
+                if int(float(row["P2W Link Down Alarm"])) == 1:
+                    mark("P2W Link Down Alarm")
+            except Exception:
+                pass
+
+        return styles
+
+    return df.style.apply(_apply, axis=1)
+
+def render_styled_html_table(
+    styler,
+    header_html_map: dict[str, str] | None = None,
+    compact: bool = False,
+    height: int = 520
+):
     html = styler.to_html()
 
     if header_html_map:
         for old, new in header_html_map.items():
             html = html.replace(f">{old}<", f">{new}<")
 
+    # compact => don't stretch to full width
+    min_width_css = "min-width: 0;" if compact else "min-width: 100%;"
+
     wrapped = f"""
     <style>
       html, body {{
         margin: 0;
         padding: 0;
-        width: 100%;
       }}
 
-      /* ✅ This creates the scrollbars */
-      #summary_table_wrap {{
+      /* Outer area fills the iframe */
+      #wrap_outer {{
         width: 100%;
-        height: 520px;          /* ✅ MUST be fixed for vertical scroll */
-        overflow: auto;         /* ✅ enables BOTH horizontal + vertical */
         box-sizing: border-box;
       }}
 
-      /* ✅ Make table keep its natural width so X overflow can happen */
-      #summary_table_wrap table {{
+      /* ✅ This is the real scroller, and it SHRINKS to table width */
+      #wrap_scroller {{
+        display: inline-block;   /* shrink to content width */
+        max-width: 100%;         /* but never exceed iframe width */
+        height: {height}px;
+        overflow: auto;          /* vertical + horizontal scroll */
+        box-sizing: border-box;
+      }}
+
+      /* Table sizing */
+      #wrap_scroller table {{
         border-collapse: collapse;
-        width: max-content;     /* ✅ forces table wider than container if needed */
-        min-width: 100%;        /* ✅ but at least fill available width */
+        width: max-content;
+        {min_width_css}
         font-family: Inter, -apple-system, BlinkMacSystemFont,
                      "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         font-size: 14px;
       }}
 
-      #summary_table_wrap th {{
+      #wrap_scroller th {{
         padding: 8px 12px;
         text-align: center;
-        white-space: normal;      /* ✅ allow line breaks in headers */
+        white-space: normal;
         line-height: 1.2;
+        font-weight: 700;
       }}
 
-      #summary_table_wrap td {{
+      #wrap_scroller td {{
         padding: 8px 12px;
         text-align: center;
-        white-space: nowrap;      /* ✅ keep data cells compact */
-      }}
-
-      #summary_table_wrap th {{
-        font-weight: 700;
+        white-space: nowrap;
       }}
     </style>
 
-    <div id="summary_table_wrap">
-      {html}
+    <div id="wrap_outer">
+      <div id="wrap_scroller">
+        {html}
+      </div>
     </div>
     """
 
-    # ✅ iframe should NOT scroll; the inner div scrolls
-    components.html(wrapped, height=520, scrolling=False)
+    components.html(wrapped, height=height, scrolling=False)
 
 
 def df_to_excel_bytes(df: pd.DataFrame, sheet_name="Sheet1", logo_path: str | None = None,
@@ -907,7 +978,13 @@ def render_graph_by_combination_id(base_filtered_original_df: pd.DataFrame, summ
             st.dataframe(plot_df[["Number", "W2P Measurement", "P2W Measurement"]], use_container_width=True)
 
 
-def render_records_section(summary_display_df: pd.DataFrame, records_display_df: pd.DataFrame, records_original_df: pd.DataFrame, selected_columns: list[str], logo_path: str):
+def render_records_section(
+    summary_display_df: pd.DataFrame,
+    records_display_df: pd.DataFrame,
+    records_original_df: pd.DataFrame,
+    selected_columns: list[str],
+    logo_path: str
+):
     st.divider()
 
     base_original_df = summary_display_df.rename(columns={v: k for k, v in DISPLAY_COLUMNS_MAP.items()})
@@ -950,14 +1027,14 @@ def render_records_section(summary_display_df: pd.DataFrame, records_display_df:
                 "P2W Above 50ms [%]": "P2W Above\n50ms [%]",
                 "W2P Link Down Alarm [%]": "W2P Link Down\nAlarm [%]",
                 "P2W Link Down Alarm [%]": "P2W Link Down\nAlarm [%]",
-                })
+            })
 
             comb_excel = df_to_excel_bytes(
                 excel_df,
                 sheet_name="Combinations",
                 logo_path=logo_path,
                 title="PacketLight APS Disruption Time Results (Combinations)"
-                )
+            )
             st.download_button(
                 "Download Combinations Results - Excel File",
                 data=comb_excel,
@@ -1015,28 +1092,19 @@ def render_records_section(summary_display_df: pd.DataFrame, records_display_df:
         if comb_records_original.empty:
             st.info("No records to display for this combination (after current filters).")
         else:
-            # convert to display names (same as before)
+            # Convert to display names (same as before)
             comb_records_display = comb_records_original.rename(columns=DISPLAY_COLUMNS_MAP)
 
+            # Apply selected columns
             table_df = comb_records_display[[c for c in selected_columns if c in comb_records_display.columns]].copy()
-            # col_cfg = build_column_config_for_autowidth(table_df)
 
-            # Compute content-based widths
-            col_widths = auto_width_from_content(table_df)
+            # ✅ Conditional red highlight (W2P/P2W > 50, alarms == 1)
+            styled_full = style_full_table_records(table_df)
 
-            column_config = {
-                col: st.column_config.Column(width=f"{col_widths[col]}px")
-                for col in table_df.columns
-            }
+            # ✅ Compact HTML table (requires your render_styled_html_table to support compact=True)
+            render_styled_html_table(styled_full, compact=True)
 
-            st.data_editor(
-                table_df,
-                use_container_width=False,
-                hide_index=False,
-                disabled=True,
-                column_config=column_config
-            )
-
+            # Excel export (export the same visible table)
             rec_excel = df_to_excel_bytes(
                 table_df,
                 sheet_name="APS Results",
