@@ -590,26 +590,27 @@ def multiselect_autoclose(label: str, options: list, qp_key: str, state_key: str
     Multiselect that closes after any change by remounting (key changes).
     Selected values are stored in st.session_state[state_key].
     """
+
     tok_key = f"__tok__{state_key}__rt{reset_token}"
 
     if tok_key not in st.session_state:
         st.session_state[tok_key] = 0
+
+    # Initialize from query params only once
     if state_key not in st.session_state:
-        st.session_state[state_key] = []
+        st.session_state[state_key] = [x for x in qp_get_list(qp_key) if x in options]
+
+    # Keep only values that still exist in current options
+    current = [x for x in st.session_state[state_key] if x in options]
+    st.session_state[state_key] = current
 
     widget_key = f"{state_key}__w__rt{reset_token}__{st.session_state[tok_key]}"
 
-    # current selection (prefer stable state; on first load try query params)
-    current = st.session_state[state_key]
-    if not current:
-        qp_default = [x for x in qp_get_list(qp_key) if x in options]
-        if qp_default:
-            current = qp_default
-            st.session_state[state_key] = current
-
     def _on_change():
-        st.session_state[state_key] = st.session_state.get(widget_key, [])
-        st.session_state[tok_key] += 1  # force remount => closes dropdown
+        new_values = st.session_state.get(widget_key, [])
+        st.session_state[state_key] = new_values
+        qp_set_list(qp_key, new_values)   # update URL immediately
+        st.session_state[tok_key] += 1    # force remount => closes dropdown
 
     return st.multiselect(
         label,
