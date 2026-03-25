@@ -182,6 +182,15 @@ def K(name: str) -> str:
 def load_data() -> pd.DataFrame:
     df = pd.read_sql(f'SELECT rowid as _rowid_, * FROM "{MAIN_TABLE}"', engine)
 
+    # Normalize Protection Action values
+    if "Protection Action" in df.columns:
+        df["Protection Action"] = df["Protection Action"].astype(str).str.strip()
+
+        df.loc[
+            df["Protection Action"].str.lower() == "fiber cut",
+            "Protection Action"
+        ] = "Fiber Cut"
+
     # Normalize timestamp column
     if "Time Stamp" in df.columns:
         parsed = pd.to_datetime(df["Time Stamp"], errors="coerce", dayfirst=True)
