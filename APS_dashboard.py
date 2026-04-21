@@ -638,13 +638,13 @@ def style_summary_table(df: pd.DataFrame):
         styles = [""] * len(row.index)
         idx = {c: i for i, c in enumerate(row.index)}
 
-        # base zone fills
-        for c in [w2p_b, w2p_a]:
-            if c in idx:
-                styles[idx[c]] += f"background-color:{W2P_ZONE_BG}; font-weight:900;"
-        for c in [p2w_b, p2w_a]:
-            if c in idx:
-                styles[idx[c]] += f"background-color:{P2W_ZONE_BG}; font-weight:900;"
+        # # base zone fills
+        # for c in [w2p_b, w2p_a]:
+        #     if c in idx:
+        #         styles[idx[c]] += f"background-color:{W2P_ZONE_BG}; font-weight:900;"
+        # for c in [p2w_b, p2w_a]:
+        #     if c in idx:
+        #         styles[idx[c]] += f"background-color:{P2W_ZONE_BG}; font-weight:900;"
 
         # winner rules
         if w2p_b in idx and w2p_a in idx:
