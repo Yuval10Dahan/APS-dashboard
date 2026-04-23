@@ -251,55 +251,55 @@ def sidebar_filters(df: pd.DataFrame):
 
         # ---- Base filters (shared) ----
         # 1) Product Name
-        product_options = sorted(filtered_options_df["Product Name"].dropna().unique())
+        product_options = sorted([x for x in filtered_options_df["Product Name"].dropna().unique() if str(x).strip() != ""])
         selected_product = multiselect_autoclose("Product Name", product_options, "prod", "sel_product")
         if selected_product:
             filtered_options_df = filtered_options_df[filtered_options_df["Product Name"].isin(selected_product)]
 
         # 2) Protection Type
-        prot_options = sorted(filtered_options_df["Protection Type"].dropna().unique())
+        prot_options = sorted([x for x in filtered_options_df["Protection Type"].dropna().unique() if str(x).strip() != ""])
         selected_protection = multiselect_autoclose("Protection Type", prot_options, "prot", "sel_protection")
         if selected_protection:
             filtered_options_df = filtered_options_df[filtered_options_df["Protection Type"].isin(selected_protection)]
 
         # 3) Protection Action
-        pact_options = sorted(filtered_options_df["Protection Action"].dropna().unique())
+        pact_options = sorted([x for x in filtered_options_df["Protection Action"].dropna().unique() if str(x).strip() != ""])
         selected_protection_action = multiselect_autoclose("Protection Action", pact_options, "pact", "sel_protection_action")
         if selected_protection_action:
             filtered_options_df = filtered_options_df[filtered_options_df["Protection Action"].isin(selected_protection_action)]
 
         # 4) Software Version
-        sw_options = sorted(filtered_options_df["SoftWare Version"].dropna().unique())
+        sw_options = sorted([x for x in filtered_options_df["SoftWare Version"].dropna().unique() if str(x).strip() != ""])
         selected_sw = multiselect_autoclose("Software Version", sw_options, "sw", "sel_sw")
         if selected_sw:
             filtered_options_df = filtered_options_df[filtered_options_df["SoftWare Version"].isin(selected_sw)]
 
         # 5) System Mode
-        mode_options = sorted(filtered_options_df["System Mode"].dropna().unique())
+        mode_options = sorted([x for x in filtered_options_df["System Mode"].dropna().unique() if str(x).strip() != ""])
         selected_mode = multiselect_autoclose("System Mode", mode_options, "mode", "sel_mode")
         if selected_mode:
             filtered_options_df = filtered_options_df[filtered_options_df["System Mode"].isin(selected_mode)]
 
         # 6) Uplink Service Type
-        uplink_options = sorted(filtered_options_df["Uplink Service Type"].dropna().unique())
+        uplink_options = sorted([x for x in filtered_options_df["Uplink Service Type"].dropna().unique() if str(x).strip() != ""])
         selected_uplink = multiselect_autoclose("Uplink Service Type", uplink_options, "uplink", "sel_uplink")
         if selected_uplink:
             filtered_options_df = filtered_options_df[filtered_options_df["Uplink Service Type"].isin(selected_uplink)]
 
         # 7) Client Service Type
-        client_options = sorted(filtered_options_df["Client Service Type"].dropna().unique())
+        client_options = sorted([x for x in filtered_options_df["Client Service Type"].dropna().unique() if str(x).strip() != ""])
         selected_client = multiselect_autoclose("Client Service Type", client_options, "client", "sel_client")
         if selected_client:
             filtered_options_df = filtered_options_df[filtered_options_df["Client Service Type"].isin(selected_client)]
 
         # 8) Transceiver PN
-        tpn_options = sorted(filtered_options_df["Transceiver PN"].dropna().unique())
+        tpn_options = sorted([x for x in filtered_options_df["Transceiver PN"].dropna().unique() if str(x).strip() != ""])
         selected_transceiver_pn = multiselect_autoclose("Transceiver PN", tpn_options, "tpn", "sel_tr_pn")
         if selected_transceiver_pn:
             filtered_options_df = filtered_options_df[filtered_options_df["Transceiver PN"].isin(selected_transceiver_pn)]
 
         # 9) Transceiver FW
-        tfw_options = sorted(filtered_options_df["Transceiver FW"].dropna().unique())
+        tfw_options = sorted([x for x in filtered_options_df["Transceiver FW"].dropna().unique() if str(x).strip() != ""])
         selected_transceiver_fw = multiselect_autoclose("Transceiver FW", tfw_options, "tfw", "sel_tr_fw")
         if selected_transceiver_fw:
             filtered_options_df = filtered_options_df[filtered_options_df["Transceiver FW"].isin(selected_transceiver_fw)]
@@ -307,7 +307,7 @@ def sidebar_filters(df: pd.DataFrame):
         # 10) Time Stamp
         selected_timestamp = []
         if "Time Stamp" in filtered_options_df.columns:
-            ts_options = sorted(filtered_options_df["Time Stamp"].dropna().unique(), reverse=True)
+            ts_options = sorted([x for x in filtered_options_df["Time Stamp"].dropna().unique() if str(x).strip() != ""], reverse=True)
             selected_timestamp = multiselect_autoclose("Date & Time", ts_options, "ts", "sel_ts")
             if selected_timestamp:
                 filtered_options_df = filtered_options_df[filtered_options_df["Time Stamp"].isin(selected_timestamp)]
